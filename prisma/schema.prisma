@@ -1,0 +1,146 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Device {
+  id          String   @id @default(cuid())
+  name        String
+  type        String   @default("ESP32")
+  location    String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  heartbeats     DeviceHeartbeat[]
+  sensorReadings SensorReading[]
+  eggEvents      EggEvent[]
+  actuators      Actuator[]
+}
+
+model DeviceHeartbeat {
+  id        String   @id @default(cuid())
+  deviceId  String
+  rssi      Int?
+  freeHeap  Int?
+  uptime    Int?
+  createdAt DateTime @default(now())
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId, createdAt])
+}
+
+model SensorReading {
+  id          String   @id @default(cuid())
+  deviceId    String
+  temperature Float
+  humidity    Float
+  createdAt   DateTime @default(now())
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId, createdAt])
+}
+
+model EggEvent {
+  id        String   @id @default(cuid())
+  deviceId  String
+  count     Int      @default(1)
+  notes     String?
+  createdAt DateTime @default(now())
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId, createdAt])
+}
+
+model Actuator {
+  id        String   @id @default(cuid())
+  deviceId  String
+  name      String
+  type      String   // fan, lamp, buzzer, led
+  pin       Int?
+  state     Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  logs   ActuatorLog[]
+
+  @@index([deviceId])
+}
+
+model ActuatorLog {
+  id         String   @id @default(cuid())
+  actuatorId String
+  state      Boolean
+  source     String   @default("web") // web, api, schedule
+  createdAt  DateTime @default(now())
+
+  actuator Actuator @relation(fields: [actuatorId], references: [id], onDelete: Cascade)
+
+  @@index([actuatorId, createdAt])
+}
+
+model Alert {
+  id        String   @id @default(cuid())
+  type      String   // temperature, humidity, device_offline
+  severity  String   @default("warning") // info, warning, critical
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+model Coop {
+  id        String   @id @default(cuid())
+  name      String
+  idKandang String?  @unique // bridge to mobile app
+  status    String   @default("active")
+  age       Int      @default(0) // umur ayam dalam hari
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  dailyStats   CoopDailyStat[]
+  monthlyStats CoopMonthlyStat[]
+}
+
+model CoopDailyStat {
+  id          String   @id @default(cuid())
+  coopId      String
+  date        DateTime
+  eggCount    Int      @default(0)
+  avgTemp     Float?
+  avgHumidity Float?
+  minTemp     Float?
+  maxTemp     Float?
+  createdAt   DateTime @default(now())
+
+  coop Coop @relation(fields: [coopId], references: [id], onDelete: Cascade)
+
+  @@unique([coopId, date])
+  @@index([coopId, date])
+}
+
+model CoopMonthlyStat {
+  id             String   @id @default(cuid())
+  coopId         String
+  month          DateTime
+  totalEggs      Int      @default(0)
+  avgTemp        Float?
+  avgHumidity    Float?
+  productionRate Float?
+  createdAt      DateTime @default(now())
+
+  coop Coop @relation(fields: [coopId], references: [id], onDelete: Cascade)
+
+  @@unique([coopId, month])
+  @@index([coopId, month])
+}
