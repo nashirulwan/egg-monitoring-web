@@ -1,0 +1,61 @@
+import { NextResponse } from 'next/server';
+import { db } from '@/lib/db';
+
+export async function GET() {
+  try {
+    const now = new Date();
+    const today = new Date(now);
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+    const [latestReading, todayStats, avgResult, lastHeartbeat, recentEggs, totalEggsResult] =
+      await Promise.all([
+        db.sensorReading.findFirst({ orderBy: { createdAt: 'desc' } }),
+        db.coopDailyStat.findFirst({
+          where: {
+            date: {
+              gte: today,
+              lt: tomorrow,
+            },
+          },
+        }),
+        db.sensorReading.aggregate({
+          _avg: { temperature: true, humidity: true },
+          _min: { temperature: true },
+          _max: { temperature: true },
+          where: { createdAt: { gte: dayAgo } },
+        }),
+        db.deviceHeartbeat.findFirst({ orderBy: { createdAt: 'desc' } }),
+        db.eggEvent.findMany({
+          orderBy: { createdAt: 'desc' },
+          take: 5,
+        }),
+        db.eggEvent.aggregate({
+          _sum: { count: true },
+        }),
+      ]);
+
+    const isOnline = lastHeartbeat
+      ? Date.now() - new Date(lastHeartbeat.createdAt).getTime() < 2 * 60 * 1000
+      : false;
+
+    return NextResponse.json({
+      temperature: latestReading?.temperature ?? null,
+      humidity: latestReading?.humidity ?? null,
+      avgTemp24h: avgResult._avg.temperature ?? null,
+      avgHumidity24h: avgResult._avg.humidity ?? null,
+      minTemp24h: avgResult._min.temperature ?? null,
+      maxTemp24h: avgResult._max.temperature ?? null,
+      eggsToday: todayStats?.eggCount ?? 0,
+      eggsTotal: totalEggsResult._sum.count ?? 0,
+      isOnline,
+      lastHeartbeat: lastHeartbeat?.createdAt ?? null,
+      recentEggs,
+    });
+  } catch (error) {
+    console.error('Summary error:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
