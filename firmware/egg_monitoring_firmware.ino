@@ -43,7 +43,7 @@ const char* WIFI_SSID     = "NamaWiFi";
 const char* WIFI_PASSWORD = "PasswordWiFi";
 
 // Server
-const char* SERVER_URL    = "http://100.94.124.50:3000";
+const char* SERVER_URL    = "https://egg.nashiru.me";
 
 // Device ID — harus sama dengan yang ada di database server
 // Daftar dulu via web UI di halaman "Perangkat"

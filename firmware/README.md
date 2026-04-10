@@ -83,7 +83,7 @@ Firmware ESP32 untuk sistem monitoring kandang ayam & produksi telur.
    ```cpp
    const char* WIFI_SSID     = "NamaWiFiAnda";
    const char* WIFI_PASSWORD = "PasswordWiFiAnda";
-   const char* SERVER_URL    = "http://100.94.124.50:3000";
+   const char* SERVER_URL    = "https://egg.nashiru.me";
    const char* DEVICE_ID     = "esp32-01";
    ```
 5. **Connect ESP32** ke komputer via USB
@@ -113,7 +113,7 @@ Firmware ESP32 untuk sistem monitoring kandang ayam & produksi telur.
 
 ## 📡 API Endpoint yang Digunakan
 
-Firmware berkomunikasi dengan server di `http://100.94.124.50:3000`:
+Firmware berkomunikasi dengan server di `https://egg.nashiru.me`:
 
 | Method | Endpoint | Fungsi |
 |---|---|---|
@@ -167,7 +167,7 @@ Firmware berkomunikasi dengan server di `http://100.94.124.50:3000`:
 
 Sebelum flash firmware, pastikan device sudah terdaftar di database:
 
-1. **Buka web UI** → `http://100.94.124.50:3000`
+1. **Buka web UI** → `https://egg.nashiru.me`
 2. **Buka halaman "Perangkat"**
 3. **Tambah device baru** dengan ID yang sama dengan `DEVICE_ID` di firmware (default: `esp32-01`)
 4. **Tambahkan 3 aktuator** untuk device tersebut:
