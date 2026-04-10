@@ -1,36 +1,85 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Egg Monitoring
 
-## Getting Started
+IoT system for monitoring poultry farm conditions — temperature, humidity, egg production, and actuator control (fan, lamp, buzzer) via a web dashboard.
 
-First, run the development server:
+Live: https://egg.nashiru.me
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## Architecture
+
+```
+ESP32 + sensors --HTTPS--> Cloudflare Tunnel --> Next.js API --> PostgreSQL
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The ESP32 reads sensors and pushes data to the server. The web dashboard displays real-time data and lets users control actuators remotely.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Repo Structure
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+firmware/          ESP32 Arduino code + wiring guide
+prisma/            Database schema
+src/app/api/       REST API routes (IoT, actuators, dashboard, settings)
+src/app/           Next.js pages (dashboard, alerts, devices, etc.)
+src/components/    React components
+src/lib/           DB client, utilities
+```
 
-## Learn More
+## Tech Stack
 
-To learn more about Next.js, take a look at the following resources:
+**Server:** Next.js 16 (App Router), TypeScript, Prisma, PostgreSQL
+**Hardware:** ESP32 DevKit V1, DHT11, IR Sensor, 3ch Relay Module
+**Infra:** Proxmox LXC, Tailscale, Cloudflare Tunnel
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Features
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- Real-time temperature & humidity monitoring with charts
+- Egg production tracking (daily/monthly stats)
+- Remote actuator control (fan, lamp, buzzer) via web UI
+- Device heartbeat monitoring (online/offline status)
+- Configurable thresholds and auto-control settings
+- Alert system for critical conditions
 
-## Deploy on Vercel
+## Quick Start
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Server
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+git clone https://github.com/nashirulwan/egg-monitoring-web.git
+cd egg-monitoring-web
+npm install
+
+# Set DATABASE_URL in .env, then:
+npx prisma db push
+npm run dev
+```
+
+### ESP32
+
+See [firmware/README.md](firmware/README.md) for wiring diagram and flashing instructions.
+
+The `SERVER_URL` in firmware is already set to `https://egg.nashiru.me`, so the ESP32 can connect from any network — no Tailscale needed on the device side.
+
+## API
+
+### IoT Endpoints (used by ESP32)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/iot/readings` | Submit sensor data |
+| POST | `/api/iot/heartbeat` | Device heartbeat |
+| POST | `/api/iot/eggs` | Report egg detection |
+
+### Web API
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/actuators` | List actuators |
+| POST | `/api/actuators/fan/toggle` | Toggle fan |
+| POST | `/api/actuators/buzzer/toggle` | Toggle buzzer |
+| POST | `/api/actuators/lamp/:id/toggle` | Toggle lamp |
+| GET/POST | `/api/settings` | Read/write settings |
+| GET | `/api/dashboard/summary` | Dashboard summary |
+| GET | `/api/alerts` | List alerts |
+
+## License
+
+MIT
