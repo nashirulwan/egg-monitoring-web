@@ -1,6 +1,6 @@
 'use client';
 
-import { Thermometer, Droplets, Egg, Wifi } from 'lucide-react';
+import { Thermometer, Droplets, Egg, Wind } from 'lucide-react';
 
 interface SummaryData {
     temperature: number | null;
@@ -9,9 +9,22 @@ interface SummaryData {
     isOnline: boolean;
     avgTemp24h: number | null;
     avgHumidity24h: number | null;
+    gasDetected: boolean;
+    gasValue: number | null;
+    lastUnsafeGasAt: string | null;
 }
 
 export default function SummaryCards({ data }: { data: SummaryData }) {
+    const lastUnsafeGas = data.lastUnsafeGasAt
+        ? new Date(data.lastUnsafeGasAt).toLocaleString('id-ID', {
+            timeZone: 'Asia/Jakarta',
+            day: '2-digit',
+            month: 'short',
+            hour: '2-digit',
+            minute: '2-digit',
+        })
+        : 'belum ada';
+
     return (
         <div className="summary-grid">
             {/* Temperature */}
@@ -58,20 +71,20 @@ export default function SummaryCards({ data }: { data: SummaryData }) {
                 <div className="summary-card-sub">butir telur terdeteksi</div>
             </div>
 
-            {/* Device Status */}
+            {/* Gas Status */}
             <div className="summary-card green">
                 <div className="summary-card-header">
-                    <span className="summary-card-label">Status Device</span>
+                    <span className="summary-card-label">Sensor Gas</span>
                     <div className="summary-card-icon green">
-                        <Wifi size={18} />
+                        <Wind size={18} />
                     </div>
                 </div>
                 <div className="summary-card-value" style={{ fontSize: '22px', marginTop: '4px' }}>
                     <span
                         className="badge"
                         style={{
-                            background: data.isOnline ? 'rgba(22,163,74,0.12)' : 'rgba(220,38,38,0.08)',
-                            color: data.isOnline ? '#16a34a' : '#dc2626',
+                            background: data.gasDetected ? 'rgba(220,38,38,0.08)' : 'rgba(22,163,74,0.12)',
+                            color: data.gasDetected ? '#dc2626' : '#16a34a',
                             fontSize: '15px',
                             padding: '4px 14px',
                         }}
@@ -80,13 +93,15 @@ export default function SummaryCards({ data }: { data: SummaryData }) {
                             className="status-dot"
                             style={{
                                 display: 'inline-block',
-                                background: data.isOnline ? '#16a34a' : '#dc2626',
+                                background: data.gasDetected ? '#dc2626' : '#16a34a',
                             }}
                         />
-                        {data.isOnline ? 'Online' : 'Offline'}
+                        {data.gasValue !== null ? `${data.gasValue} ADC` : '—'}
                     </span>
                 </div>
-                <div className="summary-card-sub">ESP32-Kandang-01</div>
+                <div className="summary-card-sub">
+                    Terakhir tidak aman: {lastUnsafeGas}
+                </div>
             </div>
         </div>
     );

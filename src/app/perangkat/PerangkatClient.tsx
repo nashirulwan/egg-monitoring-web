@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Wifi, WifiOff, Cpu, Wind, Lightbulb, Volume2, CircleDot, Signal, HardDrive, Clock } from 'lucide-react';
+import { Wifi, WifiOff, Cpu, Wind, Lightbulb, Volume2, CircleDot, Signal, HardDrive, Clock, RotateCw } from 'lucide-react';
 
 interface Actuator {
     id: string;
@@ -34,7 +34,7 @@ function formatUptime(seconds: number | null): string {
 }
 
 const actuatorIcons: Record<string, React.ElementType> = {
-    fan: Wind, lamp: Lightbulb, buzzer: Volume2, led: CircleDot,
+    fan: Wind, lamp: Lightbulb, buzzer: Volume2, led: CircleDot, conveyor: RotateCw,
 };
 
 export default function PerangkatClient({ devices }: { devices: Device[] }) {
@@ -47,11 +47,7 @@ export default function PerangkatClient({ devices }: { devices: Device[] }) {
         if (toggleLoading[a.id]) return;
         setToggleLoading((l) => ({ ...l, [a.id]: true }));
         try {
-            let url = '';
-            if (a.type === 'fan') url = '/api/actuators/fan/toggle';
-            else if (a.type === 'buzzer') url = '/api/actuators/buzzer/toggle';
-            else url = `/api/actuators/lamp/${a.id}/toggle`;
-            const res = await fetch(url, { method: 'POST' });
+            const res = await fetch(`/api/actuators/${a.id}/toggle`, { method: 'POST' });
             const data = await res.json();
             setActuatorStates((s) => ({ ...s, [a.id]: data.state }));
         } catch { } finally {

@@ -38,7 +38,12 @@ export default function NotifikasiClient() {
         setLoading(false);
     }, []);
 
-    useEffect(() => { fetchAlerts(); }, [fetchAlerts]);
+    useEffect(() => {
+        const timeout = window.setTimeout(() => {
+            void fetchAlerts();
+        }, 0);
+        return () => window.clearTimeout(timeout);
+    }, [fetchAlerts]);
 
     const markRead = async (id?: string) => {
         await fetch('/api/alerts', {
@@ -46,7 +51,7 @@ export default function NotifikasiClient() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(id ? { id } : {}),
         });
-        fetchAlerts();
+        void fetchAlerts();
     };
 
     return (

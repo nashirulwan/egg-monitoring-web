@@ -19,6 +19,7 @@ model Device {
 
   heartbeats     DeviceHeartbeat[]
   sensorReadings SensorReading[]
+  gasReadings    GasReading[]
   eggEvents      EggEvent[]
   actuators      Actuator[]
 }
@@ -41,6 +42,21 @@ model SensorReading {
   deviceId    String
   temperature Float
   humidity    Float
+  gasDetected Boolean?
+  gasValue    Int?
+  createdAt   DateTime @default(now())
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId, createdAt])
+}
+
+model GasReading {
+  id          String   @id @default(cuid())
+  deviceId    String
+  gasDetected Boolean  @default(false)
+  analogValue Int?
+  notes       String?
   createdAt   DateTime @default(now())
 
   device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
@@ -51,6 +67,7 @@ model SensorReading {
 model EggEvent {
   id        String   @id @default(cuid())
   deviceId  String
+  sensorId  String   @default("A001")
   count     Int      @default(1)
   notes     String?
   createdAt DateTime @default(now())
@@ -58,13 +75,14 @@ model EggEvent {
   device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
 
   @@index([deviceId, createdAt])
+  @@index([sensorId, createdAt])
 }
 
 model Actuator {
   id        String   @id @default(cuid())
   deviceId  String
   name      String
-  type      String   // fan, lamp, buzzer, led
+  type      String   // fan, lamp, buzzer, led, conveyor
   pin       Int?
   state     Boolean  @default(false)
   createdAt DateTime @default(now())

@@ -27,8 +27,7 @@ const formatLabel = (type: 'temperature' | 'humidity', range: Range) => {
 };
 
 const tooltipFormatter = (type: 'temperature' | 'humidity') =>
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (value: any) => `${Number(value).toFixed(1)}${type === 'temperature' ? '°C' : '%'}`;
+    (value: unknown) => `${Number(value ?? 0).toFixed(1)}${type === 'temperature' ? '°C' : '%'}`;
 
 export default function SensorChart({ type }: ChartProps) {
     const [range, setRange] = useState<Range>('24h');
@@ -36,17 +35,30 @@ export default function SensorChart({ type }: ChartProps) {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        setLoading(true);
-        fetch(`/api/dashboard/${type === 'temperature' ? 'temperature' : 'humidity'}-history?range=${range}`)
-            .then((r) => r.json())
-            .then((d) => { setData(d.data || []); setLoading(false); })
-            .catch(() => setLoading(false));
+        let active = true;
+        const timeout = window.setTimeout(() => {
+            setLoading(true);
+            fetch(`/api/dashboard/${type === 'temperature' ? 'temperature' : 'humidity'}-history?range=${range}`)
+                .then((r) => r.json())
+                .then((d) => {
+                    if (!active) return;
+                    setData(d.data || []);
+                    setLoading(false);
+                })
+                .catch(() => {
+                    if (active) setLoading(false);
+                });
+        }, 0);
+
+        return () => {
+            active = false;
+            window.clearTimeout(timeout);
+        };
     }, [type, range]);
 
     const isTemp = type === 'temperature';
     const strokeColor = isTemp ? '#D4A017' : '#E8913A';
     const gradientId = isTemp ? 'tempGrad' : 'humGrad';
-    const gradientStart = isTemp ? '#D4A01740' : '#E8913A40';
     const unit = isTemp ? '°C' : '%';
     const label = formatLabel(type, range);
 

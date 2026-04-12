@@ -7,6 +7,8 @@ interface SensorReading {
     id: string;
     temperature: number;
     humidity: number;
+    gasDetected: boolean | null;
+    gasValue: number | null;
     createdAt: string;
 }
 
@@ -37,7 +39,12 @@ export default function SensorLogPage() {
         setLoading(false);
     }, [dateFrom, dateTo]);
 
-    useEffect(() => { fetchData(); }, [fetchData]);
+    useEffect(() => {
+        const timeout = window.setTimeout(() => {
+            void fetchData();
+        }, 0);
+        return () => window.clearTimeout(timeout);
+    }, [fetchData]);
 
     const tempColor = (t: number) => {
         if (t < 36) return 'var(--danger)';
@@ -82,6 +89,7 @@ export default function SensorLogPage() {
                             <th style={thStyle}>Waktu</th>
                             <th style={thStyle}>Suhu (°C)</th>
                             <th style={thStyle}>Kelembapan (%)</th>
+                            <th style={thStyle}>Gas (ADC)</th>
                             <th style={thStyle}>Status</th>
                         </tr>
                     </thead>
@@ -92,12 +100,13 @@ export default function SensorLogPage() {
                                     <td style={tdStyle}><div className="skeleton" style={{ height: 14, width: '80%' }} /></td>
                                     <td style={tdStyle}><div className="skeleton" style={{ height: 14, width: '50%' }} /></td>
                                     <td style={tdStyle}><div className="skeleton" style={{ height: 14, width: '50%' }} /></td>
+                                    <td style={tdStyle}><div className="skeleton" style={{ height: 14, width: '50%' }} /></td>
                                     <td style={tdStyle}><div className="skeleton" style={{ height: 14, width: '60%' }} /></td>
                                 </tr>
                             ))
                         ) : readings.length === 0 ? (
                             <tr>
-                                <td colSpan={4} style={{ ...tdStyle, textAlign: 'center', color: 'var(--text-muted)', padding: 40 }}>
+                                <td colSpan={5} style={{ ...tdStyle, textAlign: 'center', color: 'var(--text-muted)', padding: 40 }}>
                                     Tidak ada data untuk rentang waktu ini.
                                 </td>
                             </tr>
@@ -120,6 +129,11 @@ export default function SensorLogPage() {
                                         <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                             <Droplets size={14} style={{ color: 'var(--accent)' }} />
                                             <strong>{r.humidity.toFixed(1)}</strong>
+                                        </span>
+                                    </td>
+                                    <td style={tdStyle}>
+                                        <span className={`badge ${r.gasDetected ? 'danger' : 'success'}`}>
+                                            {r.gasValue !== null ? `${r.gasValue} ADC` : '—'}
                                         </span>
                                     </td>
                                     <td style={tdStyle}>

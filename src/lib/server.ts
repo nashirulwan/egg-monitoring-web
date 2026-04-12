@@ -19,9 +19,11 @@ export function getRangeStart(range: string) {
 }
 
 export async function getDeviceStatuses() {
+  const now = new Date();
   const devices = await db.device.findMany({
     include: {
       heartbeats: {
+        where: { createdAt: { lte: now } },
         orderBy: { createdAt: 'desc' },
         take: 1,
       },
@@ -34,7 +36,7 @@ export async function getDeviceStatuses() {
     return {
       ...device,
       isOnline: heartbeat
-        ? Date.now() - new Date(heartbeat.createdAt).getTime() < 2 * 60 * 1000
+        ? now.getTime() - new Date(heartbeat.createdAt).getTime() < 2 * 60 * 1000
         : false,
       lastSeen: heartbeat?.createdAt ?? null,
       rssi: heartbeat?.rssi ?? null,

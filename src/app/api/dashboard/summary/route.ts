@@ -10,9 +10,17 @@ export async function GET() {
     tomorrow.setDate(tomorrow.getDate() + 1);
     const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
-    const [latestReading, todayStats, avgResult, lastHeartbeat, recentEggs, totalEggsResult] =
+    const [latestReading, latestGas, lastUnsafeGas, todayStats, avgResult, lastHeartbeat, recentEggs, totalEggsResult] =
       await Promise.all([
-        db.sensorReading.findFirst({ orderBy: { createdAt: 'desc' } }),
+        db.sensorReading.findFirst({ where: { createdAt: { lte: now } }, orderBy: { createdAt: 'desc' } }),
+        db.gasReading.findFirst({ where: { createdAt: { lte: now } }, orderBy: { createdAt: 'desc' } }),
+        db.gasReading.findFirst({
+          where: {
+            gasDetected: true,
+            createdAt: { lte: now },
+          },
+          orderBy: { createdAt: 'desc' },
+        }),
         db.coopDailyStat.findFirst({
           where: {
             date: {
@@ -27,8 +35,9 @@ export async function GET() {
           _max: { temperature: true },
           where: { createdAt: { gte: dayAgo } },
         }),
-        db.deviceHeartbeat.findFirst({ orderBy: { createdAt: 'desc' } }),
+        db.deviceHeartbeat.findFirst({ where: { createdAt: { lte: now } }, orderBy: { createdAt: 'desc' } }),
         db.eggEvent.findMany({
+          where: { createdAt: { lte: now } },
           orderBy: { createdAt: 'desc' },
           take: 5,
         }),
@@ -38,7 +47,7 @@ export async function GET() {
       ]);
 
     const isOnline = lastHeartbeat
-      ? Date.now() - new Date(lastHeartbeat.createdAt).getTime() < 2 * 60 * 1000
+      ? now.getTime() - new Date(lastHeartbeat.createdAt).getTime() < 2 * 60 * 1000
       : false;
 
     return NextResponse.json({
@@ -50,6 +59,10 @@ export async function GET() {
       maxTemp24h: avgResult._max.temperature ?? null,
       eggsToday: todayStats?.eggCount ?? 0,
       eggsTotal: totalEggsResult._sum.count ?? 0,
+      gasDetected: latestReading?.gasDetected ?? latestGas?.gasDetected ?? false,
+      gasValue: latestReading?.gasValue ?? latestGas?.analogValue ?? null,
+      lastGasReading: latestReading?.gasValue != null ? latestReading.createdAt : latestGas?.createdAt ?? null,
+      lastUnsafeGasAt: lastUnsafeGas?.createdAt ?? null,
       isOnline,
       lastHeartbeat: lastHeartbeat?.createdAt ?? null,
       recentEggs,

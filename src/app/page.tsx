@@ -1,3 +1,4 @@
+import type { Actuator, Device } from '@prisma/client';
 import { db } from '@/lib/db';
 import SharedLayout from '@/components/layout/SharedLayout';
 import SummaryCards from '@/components/dashboard/SummaryCards';
@@ -5,16 +6,40 @@ import SensorChart from '@/components/dashboard/SensorChart';
 import ActuatorControls from '@/components/dashboard/ActuatorControls';
 import DeviceStatus from '@/components/dashboard/DeviceStatus';
 import EggMonitor from '@/components/dashboard/EggMonitor';
+import DashboardClock from '@/components/dashboard/DashboardClock';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+type DeviceWithStatus = Device & {
+  isOnline: boolean;
+  lastSeen: string | null;
+  rssi: number | null;
+  freeHeap: number | null;
+  uptime: number | null;
+};
+
 async function getDashboardData() {
+  const now = new Date();
   const latest = await db.sensorReading.findFirst({
+    where: { createdAt: { lte: now } },
     orderBy: { createdAt: 'desc' },
   });
 
-  const dayAgo = new Date(Date.now() - 24 * 3600 * 1000);
+  const latestGas = await db.gasReading.findFirst({
+    where: { createdAt: { lte: now } },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  const lastUnsafeGas = await db.gasReading.findFirst({
+    where: {
+      gasDetected: true,
+      createdAt: { lte: now },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  const dayAgo = new Date(now.getTime() - 24 * 3600 * 1000);
 
   const avgResult = await db.sensorReading.aggregate({
     _avg: {
@@ -26,7 +51,7 @@ async function getDashboardData() {
     },
   });
 
-  const today = new Date();
+  const today = new Date(now);
   today.setHours(0, 0, 0, 0);
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
@@ -45,6 +70,7 @@ async function getDashboardData() {
   });
 
   const recentEggsRaw = await db.eggEvent.findMany({
+    where: { createdAt: { lte: now } },
     orderBy: { createdAt: 'desc' },
     take: 5,
   });
@@ -55,35 +81,37 @@ async function getDashboardData() {
   }));
 
   const lastHB = await db.deviceHeartbeat.findFirst({
+    where: { createdAt: { lte: now } },
     orderBy: { createdAt: 'desc' },
   });
 
   const isOnline = lastHB
-    ? Date.now() - new Date(lastHB.createdAt).getTime() < 2 * 60 * 1000
+    ? now.getTime() - new Date(lastHB.createdAt).getTime() < 2 * 60 * 1000
     : false;
 
   const allDevices = await db.device.findMany({
     include: {
       heartbeats: {
+        where: { createdAt: { lte: now } },
         orderBy: { createdAt: 'desc' },
         take: 1,
       },
     },
   });
 
-  const devicesWithStatus = allDevices.map((d) => {
+  const devicesWithStatus: DeviceWithStatus[] = allDevices.map((d) => {
     const hb = d.heartbeats[0];
     return {
       ...d,
-      isOnline: hb ? Date.now() - new Date(hb.createdAt).getTime() < 120000 : false,
-      lastSeen: hb?.createdAt ?? null,
+      isOnline: hb ? now.getTime() - new Date(hb.createdAt).getTime() < 120000 : false,
+      lastSeen: hb?.createdAt.toISOString() ?? null,
       rssi: hb?.rssi ?? null,
       freeHeap: hb?.freeHeap ?? null,
       uptime: hb?.uptime ?? null,
     };
   });
 
-  const allActuators = await db.actuator.findMany();
+  const allActuators: Actuator[] = await db.actuator.findMany();
 
   return {
     temperature: latest?.temperature ?? null,
@@ -92,6 +120,10 @@ async function getDashboardData() {
     avgHumidity24h: avgResult._avg.humidity ? parseFloat(avgResult._avg.humidity.toFixed(1)) : null,
     eggsToday: todayStat?.eggCount ?? 0,
     eggsTotal: totalEggs._sum.count ?? 0,
+    gasDetected: latest?.gasDetected ?? latestGas?.gasDetected ?? false,
+    gasValue: latest?.gasValue ?? latestGas?.analogValue ?? null,
+    lastGasReading: latestGas?.createdAt ?? null,
+    lastUnsafeGasAt: lastUnsafeGas?.createdAt.toISOString() ?? null,
     recentEggs,
     isOnline,
     devices: devicesWithStatus,
@@ -101,10 +133,6 @@ async function getDashboardData() {
 
 export default async function DashboardPage() {
   const data = await getDashboardData();
-  const timeStr = new Date().toLocaleString('id-ID', {
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  });
 
   return (
     <SharedLayout>
@@ -113,7 +141,7 @@ export default async function DashboardPage() {
           <h2>Dashboard Monitoring</h2>
           <p>Sistem monitoring kandang telur</p>
         </div>
-        <div className="header-time">{timeStr}</div>
+        <DashboardClock />
       </div>
 
       <SummaryCards
@@ -124,6 +152,9 @@ export default async function DashboardPage() {
           isOnline: data.isOnline,
           avgTemp24h: data.avgTemp24h,
           avgHumidity24h: data.avgHumidity24h,
+          gasDetected: data.gasDetected,
+          gasValue: data.gasValue,
+          lastUnsafeGasAt: data.lastUnsafeGasAt,
         }}
       />
 
@@ -134,7 +165,7 @@ export default async function DashboardPage() {
 
       <div className="bottom-grid">
         <ActuatorControls actuators={data.actuators} />
-        <DeviceStatus devices={data.devices as any} />
+        <DeviceStatus devices={data.devices} />
         <EggMonitor
           data={{
             eggsToday: data.eggsToday,

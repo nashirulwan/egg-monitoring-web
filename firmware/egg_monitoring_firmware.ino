@@ -1,107 +1,84 @@
 /*
- * ============================================================
- *  EGG MONITORING & CONTROL — ESP32 FIRMWARE
- * ============================================================
+ * EGG MONITORING & CONTROL - ESP32 FIRMWARE
  *
- *  Sensor:
- *    - DHT11  → Suhu & Kelembapan
- *    - IR Sensor → Hitung Telur (pulse detection)
+ * Sensor:
+ *   - DHT11        -> suhu & kelembapan
+ *   - 4 IR sensor  -> hitung telur per ayam/sensor
+ *   - MQ gas       -> deteksi gas/kotoran, trigger conveyor
  *
- *  Aktuator (via Relay Module):
- *    - Relay 1 → Kipas (Fan)
- *    - Relay 2 → Lampu (Lamp)
- *    - Relay 3 → Buzzer
+ * Aktuator:
+ *   - Kipas 1, Kipas 2, Lampu, Buzzer, Conveyor
  *
- *  Server API:
- *    POST /api/iot/readings    → kirim data sensor
- *    POST /api/iot/heartbeat   → lapor status device
- *    POST /api/iot/eggs        → lapor telur terdeteksi
- *    GET  /api/actuators       → ambil status relay terbaru
- *
- *  Wiring:
- *    DHT11 Data     → GPIO 4
- *    IR Sensor Out  → GPIO 5
- *    Relay Fan      → GPIO 16
- *    Relay Lamp     → GPIO 17
- *    Relay Buzzer   → GPIO 18
- * ============================================================
+ * Server API:
+ *   POST /api/iot/readings  -> suhu, kelembapan, gas optional
+ *   POST /api/iot/heartbeat -> status device
+ *   POST /api/iot/eggs      -> telur per sensorId
+ *   POST /api/iot/gas       -> event gas, conveyor auto-on di server
+ *   GET  /api/actuators     -> status aktuator terbaru
  */
 
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <DHT.h>
 #include <NTPClient.h>
 #include <WiFiUdp.h>
 
-// ============================================================
-//  KONFIGURASI — UBAH SESUAI KEBUTUTUHAN
-// ============================================================
-
-// WiFi
 const char* WIFI_SSID     = "NamaWiFi";
 const char* WIFI_PASSWORD = "PasswordWiFi";
-
-// Server
 const char* SERVER_URL    = "https://egg.nashiru.me";
-
-// Device ID — harus sama dengan yang ada di database server
-// Daftar dulu via web UI di halaman "Perangkat"
 const char* DEVICE_ID     = "esp32-01";
 
-// Interval (milidetik)
-const unsigned long SENSOR_INTERVAL   = 10000;   // 10 detik
-const unsigned long HEARTBEAT_INTERVAL = 30000;  // 30 detik
-const unsigned long ACTUATOR_POLL_INTERVAL = 5000; // 5 detik
+const unsigned long SENSOR_INTERVAL = 10000;
+const unsigned long HEARTBEAT_INTERVAL = 30000;
+const unsigned long ACTUATOR_POLL_INTERVAL = 5000;
+const unsigned long EGG_SEND_INTERVAL = 60000;
 
-// Pin
-#define DHT_PIN        4
-#define IR_SENSOR_PIN  5
-#define RELAY_FAN_PIN  16
-#define RELAY_LAMP_PIN 17
-#define RELAY_BUZZER_PIN 18
-
-// DHT Type
+#define DHT_PIN 4
 #define DHT_TYPE DHT11
 
-// ============================================================
-//  GLOBAL VARIABLES
-// ============================================================
+#define EGG_SENSOR_1_PIN 32
+#define EGG_SENSOR_2_PIN 33
+#define EGG_SENSOR_3_PIN 25
+#define EGG_SENSOR_4_PIN 26
+
+#define GAS_SENSOR_PIN 34
+#define GAS_THRESHOLD 600
+
+#define RELAY_FAN_1_PIN 16
+#define RELAY_FAN_2_PIN 17
+#define RELAY_LAMP_PIN 18
+#define RELAY_BUZZER_PIN 19
+#define RELAY_CONVEYOR_PIN 21
 
 DHT dht(DHT_PIN, DHT_TYPE);
-
+WiFiClientSecure secureClient;
 WiFiUDP ntpUDP;
-NTPClient timeClient(ntpUDP, "pool.ntp.org", 7 * 3600, 60000); // WIB UTC+7
+NTPClient timeClient(ntpUDP, "pool.ntp.org", 7 * 3600, 60000);
 
-unsigned long lastSensorTime    = 0;
+const char* EGG_SENSOR_IDS[4] = { "A001", "A002", "B001", "B002" };
+volatile int eggCounts[4] = { 0, 0, 0, 0 };
+volatile unsigned long lastEggTriggers[4] = { 0, 0, 0, 0 };
+const unsigned long IR_DEBOUNCE_MS = 1000;
+
+unsigned long lastSensorTime = 0;
 unsigned long lastHeartbeatTime = 0;
-unsigned long lastActuatorTime  = 0;
+unsigned long lastActuatorTime = 0;
+unsigned long lastEggSendTime = 0;
 
-// IR Egg Counter
-volatile int eggCount = 0;
-unsigned long lastIrTrigger = 0;
-const unsigned long IR_DEBOUNCE_MS = 1000;  // debounce 1 detik
-
-// Actuator state (dari server)
-bool serverFanState   = false;
-bool serverLampState  = false;
-bool serverBuzzerState = false;
-
-// ============================================================
-//  IR INTERRUPT — hitung telur
-// ============================================================
-
-void IRAM_ATTR irInterrupt() {
+void IRAM_ATTR handleEggSensor(int index) {
   unsigned long now = millis();
-  if (now - lastIrTrigger > IR_DEBOUNCE_MS) {
-    lastIrTrigger = now;
-    eggCount++;
+  if (now - lastEggTriggers[index] > IR_DEBOUNCE_MS) {
+    lastEggTriggers[index] = now;
+    eggCounts[index]++;
   }
 }
 
-// ============================================================
-//  WIFI
-// ============================================================
+void IRAM_ATTR eggSensor1Interrupt() { handleEggSensor(0); }
+void IRAM_ATTR eggSensor2Interrupt() { handleEggSensor(1); }
+void IRAM_ATTR eggSensor3Interrupt() { handleEggSensor(2); }
+void IRAM_ATTR eggSensor4Interrupt() { handleEggSensor(3); }
 
 void connectWiFi() {
   Serial.print("Connecting to WiFi");
@@ -117,20 +94,18 @@ void connectWiFi() {
   }
 
   if (WiFi.status() == WL_CONNECTED) {
+    secureClient.setInsecure();
     Serial.println();
     Serial.print("Connected! IP: ");
     Serial.println(WiFi.localIP());
     Serial.print("RSSI: ");
     Serial.println(WiFi.RSSI());
-  } else {
-    Serial.println("\nWiFi connection FAILED, restarting...");
-    ESP.restart();
+    return;
   }
-}
 
-// ============================================================
-//  HTTP HELPERS
-// ============================================================
+  Serial.println("\nWiFi connection FAILED, restarting...");
+  ESP.restart();
+}
 
 int sendPost(const char* endpoint, const char* jsonBody) {
   if (WiFi.status() != WL_CONNECTED) {
@@ -139,14 +114,14 @@ int sendPost(const char* endpoint, const char* jsonBody) {
   }
 
   HTTPClient http;
-  http.begin(String(SERVER_URL) + String(endpoint));
+  http.begin(secureClient, String(SERVER_URL) + String(endpoint));
   http.addHeader("Content-Type", "application/json");
 
   int httpCode = http.POST(jsonBody);
 
   if (httpCode > 0) {
     String payload = http.getString();
-    Serial.printf("  [%s] HTTP %d → %s\n", endpoint, httpCode, payload.c_str());
+    Serial.printf("  [%s] HTTP %d -> %s\n", endpoint, httpCode, payload.c_str());
   } else {
     Serial.printf("  [%s] HTTP Error: %s\n", endpoint, http.errorToString(httpCode).c_str());
   }
@@ -162,7 +137,7 @@ int sendGet(const char* endpoint, String& response) {
   }
 
   HTTPClient http;
-  http.begin(String(SERVER_URL) + String(endpoint));
+  http.begin(secureClient, String(SERVER_URL) + String(endpoint));
 
   int httpCode = http.GET();
 
@@ -176,85 +151,104 @@ int sendGet(const char* endpoint, String& response) {
   return httpCode;
 }
 
-// ============================================================
-//  KIRIM DATA SENSOR
-// ============================================================
-
 void sendSensorData() {
   float temp = dht.readTemperature();
-  float hum  = dht.readHumidity();
+  float hum = dht.readHumidity();
+  int gasValue = analogRead(GAS_SENSOR_PIN);
+  bool gasDetected = gasValue >= GAS_THRESHOLD;
 
   if (isnan(temp) || isnan(hum)) {
     Serial.println("  DHT11 read FAILED, skipping sensor report");
     return;
   }
 
-  StaticJsonDocument<128> doc;
-  doc["deviceId"]    = DEVICE_ID;
+  StaticJsonDocument<192> doc;
+  doc["deviceId"] = DEVICE_ID;
   doc["temperature"] = temp;
-  doc["humidity"]    = hum;
+  doc["humidity"] = hum;
+  doc["gasDetected"] = gasDetected;
+  doc["gasValue"] = gasValue;
 
-  char jsonBuf[128];
+  char jsonBuf[192];
   serializeJson(doc, jsonBuf);
 
-  Serial.printf("  Sensor → temp: %.1f°C, hum: %.1f%%\n", temp, hum);
+  Serial.printf("  Sensor -> temp: %.1f C, hum: %.1f%%, gas: %d (%s)\n",
+                temp, hum, gasValue, gasDetected ? "DETECTED" : "safe");
   sendPost("/api/iot/readings", jsonBuf);
-}
 
-// ============================================================
-//  KIRIM HEARTBEAT
-// ============================================================
+  // /api/iot/readings already records gas and auto-enables conveyor when gasDetected is true.
+}
 
 void sendHeartbeat() {
   StaticJsonDocument<128> doc;
   doc["deviceId"] = DEVICE_ID;
-  doc["rssi"]     = WiFi.RSSI();
+  doc["rssi"] = WiFi.RSSI();
   doc["freeHeap"] = ESP.getFreeHeap();
-  doc["uptime"]   = (unsigned long)(millis() / 1000);
+  doc["uptime"] = (unsigned long)(millis() / 1000);
 
   char jsonBuf[128];
   serializeJson(doc, jsonBuf);
 
-  Serial.printf("  Heartbeat → RSSI: %d, Heap: %lu, Uptime: %lus\n",
+  Serial.printf("  Heartbeat -> RSSI: %d, Heap: %lu, Uptime: %lus\n",
                 WiFi.RSSI(), ESP.getFreeHeap(), (unsigned long)(millis() / 1000));
   sendPost("/api/iot/heartbeat", jsonBuf);
 }
 
-// ============================================================
-//  KIRIM DATA TELUR
-// ============================================================
-
 void sendEggData() {
-  if (eggCount == 0) return;
+  for (int i = 0; i < 4; i++) {
+    int count;
 
-  StaticJsonDocument<128> doc;
-  doc["deviceId"] = DEVICE_ID;
-  doc["count"]    = eggCount;
-  doc["notes"]    = "auto-detected";
+    noInterrupts();
+    count = eggCounts[i];
+    eggCounts[i] = 0;
+    interrupts();
 
-  char jsonBuf[128];
-  serializeJson(doc, jsonBuf);
+    if (count == 0) continue;
 
-  Serial.printf("  Eggs → count: %d\n", eggCount);
-  sendPost("/api/iot/eggs", jsonBuf);
+    StaticJsonDocument<160> doc;
+    doc["deviceId"] = DEVICE_ID;
+    doc["sensorId"] = EGG_SENSOR_IDS[i];
+    doc["count"] = count;
+    doc["notes"] = "auto-detected";
 
-  eggCount = 0;
+    char jsonBuf[160];
+    serializeJson(doc, jsonBuf);
+
+    Serial.printf("  Eggs -> sensor: %s, count: %d\n", EGG_SENSOR_IDS[i], count);
+    int httpCode = sendPost("/api/iot/eggs", jsonBuf);
+    if (httpCode < 200 || httpCode >= 300) {
+      noInterrupts();
+      eggCounts[i] += count;
+      interrupts();
+    }
+  }
 }
 
-// ============================================================
-//  POLLING STATUS AKTUATOR DARI SERVER
-// ============================================================
+void writeActuatorPin(const char* type, const char* name, bool state) {
+  if (strcmp(type, "fan") == 0 && strcmp(name, "Kipas 1") == 0) {
+    digitalWrite(RELAY_FAN_1_PIN, state ? HIGH : LOW);
+  } else if (strcmp(type, "fan") == 0 && strcmp(name, "Kipas 2") == 0) {
+    digitalWrite(RELAY_FAN_2_PIN, state ? HIGH : LOW);
+  } else if (strcmp(type, "lamp") == 0) {
+    digitalWrite(RELAY_LAMP_PIN, state ? HIGH : LOW);
+  } else if (strcmp(type, "buzzer") == 0) {
+    digitalWrite(RELAY_BUZZER_PIN, state ? HIGH : LOW);
+  } else if (strcmp(type, "conveyor") == 0) {
+    digitalWrite(RELAY_CONVEYOR_PIN, state ? HIGH : LOW);
+  }
+}
 
 void pollActuators() {
   String response;
-  int httpCode = sendGet("/api/actuators", response);
+  String endpoint = String("/api/actuators?deviceId=") + String(DEVICE_ID);
+  int httpCode = sendGet(endpoint.c_str(), response);
 
   if (httpCode != 200 || response.length() == 0) {
     Serial.println("  Poll actuators FAILED");
     return;
   }
 
-  StaticJsonDocument<512> doc;
+  StaticJsonDocument<1024> doc;
   DeserializationError err = deserializeJson(doc, response);
 
   if (err) {
@@ -265,30 +259,14 @@ void pollActuators() {
   JsonArray actuators = doc["actuators"];
 
   for (JsonObject act : actuators) {
-    const char* type  = act["type"];
-    bool state        = act["state"];
+    const char* type = act["type"];
+    const char* name = act["name"];
+    bool state = act["state"];
 
-    if (strcmp(type, "fan") == 0) {
-      serverFanState = state;
-      digitalWrite(RELAY_FAN_PIN, state ? HIGH : LOW);
-      Serial.printf("  Fan → %s\n", state ? "ON" : "OFF");
-    }
-    else if (strcmp(type, "lamp") == 0) {
-      serverLampState = state;
-      digitalWrite(RELAY_LAMP_PIN, state ? HIGH : LOW);
-      Serial.printf("  Lamp → %s\n", state ? "ON" : "OFF");
-    }
-    else if (strcmp(type, "buzzer") == 0) {
-      serverBuzzerState = state;
-      digitalWrite(RELAY_BUZZER_PIN, state ? HIGH : LOW);
-      Serial.printf("  Buzzer → %s\n", state ? "ON" : "OFF");
-    }
+    writeActuatorPin(type, name, state);
+    Serial.printf("  %s -> %s\n", name, state ? "ON" : "OFF");
   }
 }
-
-// ============================================================
-//  SETUP
-// ============================================================
 
 void setup() {
   Serial.begin(115200);
@@ -296,20 +274,32 @@ void setup() {
 
   Serial.println();
   Serial.println("========================================");
-  Serial.println("  EGG MONITORING ESP32 — Starting...");
+  Serial.println("  EGG MONITORING ESP32 - Starting...");
   Serial.println("========================================");
 
   dht.begin();
 
-  pinMode(RELAY_FAN_PIN, OUTPUT);
+  pinMode(RELAY_FAN_1_PIN, OUTPUT);
+  pinMode(RELAY_FAN_2_PIN, OUTPUT);
   pinMode(RELAY_LAMP_PIN, OUTPUT);
   pinMode(RELAY_BUZZER_PIN, OUTPUT);
-  digitalWrite(RELAY_FAN_PIN, LOW);
+  pinMode(RELAY_CONVEYOR_PIN, OUTPUT);
+  digitalWrite(RELAY_FAN_1_PIN, LOW);
+  digitalWrite(RELAY_FAN_2_PIN, LOW);
   digitalWrite(RELAY_LAMP_PIN, LOW);
   digitalWrite(RELAY_BUZZER_PIN, LOW);
+  digitalWrite(RELAY_CONVEYOR_PIN, LOW);
 
-  pinMode(IR_SENSOR_PIN, INPUT);
-  attachInterrupt(digitalPinToInterrupt(IR_SENSOR_PIN), irInterrupt, FALLING);
+  pinMode(EGG_SENSOR_1_PIN, INPUT_PULLUP);
+  pinMode(EGG_SENSOR_2_PIN, INPUT_PULLUP);
+  pinMode(EGG_SENSOR_3_PIN, INPUT_PULLUP);
+  pinMode(EGG_SENSOR_4_PIN, INPUT_PULLUP);
+  pinMode(GAS_SENSOR_PIN, INPUT);
+
+  attachInterrupt(digitalPinToInterrupt(EGG_SENSOR_1_PIN), eggSensor1Interrupt, FALLING);
+  attachInterrupt(digitalPinToInterrupt(EGG_SENSOR_2_PIN), eggSensor2Interrupt, FALLING);
+  attachInterrupt(digitalPinToInterrupt(EGG_SENSOR_3_PIN), eggSensor3Interrupt, FALLING);
+  attachInterrupt(digitalPinToInterrupt(EGG_SENSOR_4_PIN), eggSensor4Interrupt, FALLING);
 
   connectWiFi();
 
@@ -319,10 +309,6 @@ void setup() {
   Serial.println("Setup complete. Starting main loop...");
   Serial.println("========================================");
 }
-
-// ============================================================
-//  MAIN LOOP
-// ============================================================
 
 void loop() {
   unsigned long now = millis();
@@ -344,9 +330,8 @@ void loop() {
     sendHeartbeat();
   }
 
-  static unsigned long lastEggSend = 0;
-  if (eggCount > 0 && now - lastEggSend >= 60000) {
-    lastEggSend = now;
+  if (now - lastEggSendTime >= EGG_SEND_INTERVAL) {
+    lastEggSendTime = now;
     sendEggData();
   }
 

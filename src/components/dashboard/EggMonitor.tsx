@@ -3,7 +3,7 @@
 interface EggData {
     eggsToday: number;
     eggsTotal: number;
-    recentEggs: Array<{ id: string; count: number; createdAt: string }>;
+    recentEggs: Array<{ id: string; sensorId: string; count: number; createdAt: string }>;
 }
 
 export default function EggMonitor({ data }: { data: EggData }) {
@@ -50,7 +50,7 @@ export default function EggMonitor({ data }: { data: EggData }) {
                                 className="badge warning"
                                 style={{ background: 'rgba(212,160,23,0.12)', color: 'var(--primary-dark)' }}
                             >
-                                +{e.count} butir
+                                {e.sensorId} · +{e.count}
                             </span>
                         </div>
                     ))

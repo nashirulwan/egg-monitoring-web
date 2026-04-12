@@ -1,9 +1,41 @@
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 
 const db = new PrismaClient();
 
-function randomBetween(min: number, max: number): number {
-  return Math.random() * (max - min) + min;
+const deviceId = 'esp32-01';
+const sensorIds = ['A001', 'A002', 'B001', 'B002'] as const;
+const monthlyEggTargets: Record<string, Record<(typeof sensorIds)[number], number>> = {
+  '2025-12': { A001: 25, A002: 22, B001: 14, B002: 24 },
+  '2026-01': { A001: 26, A002: 23, B001: 12, B002: 18 },
+  '2026-02': { A001: 21, A002: 20, B001: 8, B002: 22 },
+  '2026-03': { A001: 24, A002: 19, B001: 10, B002: 25 },
+  '2026-04': { A001: 23, A002: 21, B001: 7, B002: 16 },
+};
+
+function seededNumber(seed: number, min: number, max: number) {
+  const x = Math.sin(seed) * 10000;
+  const fraction = x - Math.floor(x);
+  return min + fraction * (max - min);
+}
+
+function daysInMonth(month: string) {
+  const [year, monthNumber] = month.split('-').map(Number);
+  return new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+}
+
+function monthStart(month: string) {
+  const [year, monthNumber] = month.split('-').map(Number);
+  return new Date(Date.UTC(year, monthNumber - 1, 1));
+}
+
+function pickEggDays(total: number, totalDays: number, sensorIndex: number) {
+  const days = new Set<number>();
+  for (let i = 0; i < total; i += 1) {
+    const day = Math.min(totalDays, Math.floor(((i + 0.5) * totalDays) / total) + 1 + (sensorIndex % 2));
+    days.add(day);
+  }
+
+  return Array.from(days).sort((a, b) => a - b);
 }
 
 async function main() {
@@ -12,6 +44,7 @@ async function main() {
   await db.actuatorLog.deleteMany();
   await db.actuator.deleteMany();
   await db.eggEvent.deleteMany();
+  await db.gasReading.deleteMany();
   await db.sensorReading.deleteMany();
   await db.deviceHeartbeat.deleteMany();
   await db.alert.deleteMany();
@@ -22,6 +55,7 @@ async function main() {
 
   const device = await db.device.create({
     data: {
+      id: deviceId,
       name: 'ESP32-Kandang-01',
       type: 'ESP32',
       location: 'Kandang Utama',
@@ -39,113 +73,143 @@ async function main() {
 
   await db.actuator.createMany({
     data: [
-      { deviceId: device.id, name: 'Kipas Utama', type: 'fan', pin: 25, state: true },
-      { deviceId: device.id, name: 'Lampu 1', type: 'lamp', pin: 26, state: true },
-      { deviceId: device.id, name: 'Lampu 2', type: 'lamp', pin: 27, state: true },
-      { deviceId: device.id, name: 'Lampu 3', type: 'lamp', pin: 14, state: false },
-      { deviceId: device.id, name: 'Lampu 4', type: 'lamp', pin: 12, state: false },
-      { deviceId: device.id, name: 'Buzzer', type: 'buzzer', pin: 13, state: false },
-      { deviceId: device.id, name: 'LED Indikator', type: 'led', pin: 2, state: true },
+      { id: 'act-fan-1', deviceId: device.id, name: 'Kipas 1', type: 'fan', pin: 16, state: false },
+      { id: 'act-fan-2', deviceId: device.id, name: 'Kipas 2', type: 'fan', pin: 17, state: false },
+      { id: 'act-lamp', deviceId: device.id, name: 'Lampu', type: 'lamp', pin: 18, state: true },
+      { id: 'act-buzzer', deviceId: device.id, name: 'Buzzer', type: 'buzzer', pin: 19, state: false },
+      { id: 'act-conveyor', deviceId: device.id, name: 'Conveyor', type: 'conveyor', pin: 21, state: false },
     ],
   });
 
-  const now = new Date();
-  const sensorReadings = [];
-  const heartbeats = [];
-  const eggEvents = [];
-  const dailyStats = [];
+  const sensorReadings: Prisma.SensorReadingCreateManyInput[] = [];
+  const gasReadings: Prisma.GasReadingCreateManyInput[] = [];
+  const heartbeats: Prisma.DeviceHeartbeatCreateManyInput[] = [];
+  const eggEvents: Prisma.EggEventCreateManyInput[] = [];
+  const dailyStats: Prisma.CoopDailyStatCreateManyInput[] = [];
 
-  for (let day = 29; day >= 0; day -= 1) {
-    const baseTemp = 37.5 + randomBetween(-0.8, 0.8);
-    const baseHumidity = 55 + randomBetween(-4, 4);
-    const dayDate = new Date(now);
-    dayDate.setDate(dayDate.getDate() - day);
-    dayDate.setHours(0, 0, 0, 0);
+  let globalDay = 0;
+  for (const [month, targets] of Object.entries(monthlyEggTargets)) {
+    const start = monthStart(month);
+    const totalDays = daysInMonth(month);
+    const eggsByDay = new Map<number, number>();
 
-    const temps: number[] = [];
-    const hums: number[] = [];
-    let dayEggs = 0;
+    sensorIds.forEach((sensorId, sensorIndex) => {
+      const target = targets[sensorId];
+      const eggDays = pickEggDays(target, totalDays, sensorIndex);
+      const remainingDoubleEggs = target - eggDays.length;
 
-    for (let minute = 0; minute < 1440; minute += 10) {
-      const d = new Date(dayDate);
-      d.setMinutes(minute);
-      const hourVar = Math.sin((minute / 1440) * Math.PI * 2) * 1.2;
-      const temp = parseFloat((baseTemp + hourVar + randomBetween(-0.2, 0.2)).toFixed(1));
-      const hum = parseFloat((baseHumidity + hourVar * 1.5 + randomBetween(-1.5, 1.5)).toFixed(1));
+      eggDays.forEach((day, eventIndex) => {
+        const count = eventIndex < remainingDoubleEggs ? 2 : 1;
+        const createdAt = new Date(start);
+        createdAt.setUTCDate(day);
+        createdAt.setUTCHours(7 + sensorIndex * 2 + (eventIndex % 3), (eventIndex * 11) % 60, 0, 0);
 
-      sensorReadings.push({
-        deviceId: device.id,
-        temperature: temp,
-        humidity: hum,
-        createdAt: d,
+        eggEvents.push({
+          deviceId: device.id,
+          sensorId,
+          count,
+          notes: target < 20 ? 'dummy afkir' : 'dummy produktif',
+          createdAt,
+        });
+        eggsByDay.set(day, (eggsByDay.get(day) ?? 0) + count);
       });
-      temps.push(temp);
-      hums.push(hum);
-    }
-
-    for (let minute = 0; minute < 1440; minute += 5) {
-      const d = new Date(dayDate);
-      d.setMinutes(minute);
-      heartbeats.push({
-        deviceId: device.id,
-        rssi: Math.floor(randomBetween(-75, -35)),
-        freeHeap: Math.floor(randomBetween(120000, 230000)),
-        uptime: (29 - day) * 86400 + minute * 60,
-        createdAt: d,
-      });
-    }
-
-    const eggs = Math.floor(randomBetween(3, 8));
-    for (let i = 0; i < eggs; i += 1) {
-      const d = new Date(dayDate);
-      d.setHours(Math.floor(randomBetween(7, 17)), Math.floor(randomBetween(0, 60)), 0, 0);
-      const count = Math.floor(randomBetween(1, 4));
-      eggEvents.push({
-        deviceId: device.id,
-        count,
-        createdAt: d,
-      });
-      dayEggs += count;
-    }
-
-    const avg = (items: number[]) => items.reduce((sum, value) => sum + value, 0) / items.length;
-
-    dailyStats.push({
-      coopId: coop.id,
-      date: dayDate,
-      eggCount: dayEggs,
-      avgTemp: parseFloat(avg(temps).toFixed(1)),
-      avgHumidity: parseFloat(avg(hums).toFixed(1)),
-      minTemp: Math.min(...temps),
-      maxTemp: Math.max(...temps),
     });
+
+    for (let day = 1; day <= totalDays; day += 1) {
+      const date = new Date(start);
+      date.setUTCDate(day);
+      const baseTemp = 37.3 + seededNumber(globalDay + 10, -0.5, 0.7);
+      const baseHumidity = 55 + seededNumber(globalDay + 20, -4, 4);
+      const temps = [];
+      const hums = [];
+      let lastGasDetected = false;
+      let lastGasValue = 0;
+
+      for (let hour = 0; hour < 24; hour += 2) {
+        const createdAt = new Date(date);
+        createdAt.setUTCHours(hour, 0, 0, 0);
+        const temp = Number((baseTemp + Math.sin(hour / 24 * Math.PI * 2) * 0.8 + seededNumber(globalDay + hour, -0.2, 0.2)).toFixed(1));
+        const humidity = Number((baseHumidity + Math.cos(hour / 24 * Math.PI * 2) * 1.7 + seededNumber(globalDay + hour + 40, -1, 1)).toFixed(1));
+        const gasDetected = (globalDay + hour) % 47 === 0 || (globalDay + hour) % 83 === 0;
+        const gasValue = Math.round(gasDetected
+          ? seededNumber(globalDay + hour + 80, 680, 880)
+          : seededNumber(globalDay + hour + 90, 180, 430));
+
+        sensorReadings.push({
+          deviceId: device.id,
+          temperature: temp,
+          humidity,
+          gasDetected,
+          gasValue,
+          createdAt,
+        });
+
+        if (hour % 6 === 0 || gasDetected) {
+          gasReadings.push({
+            deviceId: device.id,
+            gasDetected,
+            analogValue: gasValue,
+            notes: gasDetected ? 'dummy gas tinggi' : 'dummy gas aman',
+            createdAt,
+          });
+        }
+
+        heartbeats.push({
+          deviceId: device.id,
+          rssi: Math.round(seededNumber(globalDay + hour + 120, -68, -38)),
+          freeHeap: Math.round(seededNumber(globalDay + hour + 140, 145000, 225000)),
+          uptime: globalDay * 86400 + hour * 3600,
+          createdAt,
+        });
+
+        temps.push(temp);
+        hums.push(humidity);
+        lastGasDetected = gasDetected;
+        lastGasValue = gasValue;
+      }
+
+      const avg = (items: number[]) => items.reduce((sum, value) => sum + value, 0) / items.length;
+      dailyStats.push({
+        coopId: coop.id,
+        date,
+        eggCount: eggsByDay.get(day) ?? 0,
+        avgTemp: Number(avg(temps).toFixed(1)),
+        avgHumidity: Number(avg(hums).toFixed(1)),
+        minTemp: Math.min(...temps),
+        maxTemp: Math.max(...temps),
+      });
+
+      if (month === '2026-04' && day === 30) {
+        sensorReadings.push({
+          deviceId: device.id,
+          temperature: 37.6,
+          humidity: 56.2,
+          gasDetected: lastGasDetected,
+          gasValue: lastGasValue,
+          createdAt: new Date('2026-04-30T23:50:00.000Z'),
+        });
+      }
+
+      globalDay += 1;
+    }
   }
 
   await db.sensorReading.createMany({ data: sensorReadings });
+  await db.gasReading.createMany({ data: gasReadings });
   await db.deviceHeartbeat.createMany({ data: heartbeats });
   await db.eggEvent.createMany({ data: eggEvents });
   await db.coopDailyStat.createMany({ data: dailyStats });
 
-  await db.deviceHeartbeat.create({
-    data: {
-      deviceId: device.id,
-      rssi: -42,
-      freeHeap: 210000,
-      uptime: 2592000,
-      createdAt: new Date(),
-    },
-  });
-
   const monthlyMap = new Map<string, { totalEggs: number; temps: number[]; hums: number[] }>();
   for (const stat of dailyStats) {
     const month = new Date(stat.date);
-    month.setDate(1);
-    month.setHours(0, 0, 0, 0);
+    month.setUTCDate(1);
+    month.setUTCHours(0, 0, 0, 0);
     const key = month.toISOString();
     const bucket = monthlyMap.get(key) ?? { totalEggs: 0, temps: [], hums: [] };
-    bucket.totalEggs += stat.eggCount;
-    if (stat.avgTemp !== null) bucket.temps.push(stat.avgTemp);
-    if (stat.avgHumidity !== null) bucket.hums.push(stat.avgHumidity);
+    bucket.totalEggs += stat.eggCount ?? 0;
+    if (stat.avgTemp != null) bucket.temps.push(stat.avgTemp);
+    if (stat.avgHumidity != null) bucket.hums.push(stat.avgHumidity);
     monthlyMap.set(key, bucket);
   }
 
@@ -155,10 +219,10 @@ async function main() {
       month: new Date(key),
       totalEggs: value.totalEggs,
       avgTemp: value.temps.length
-        ? parseFloat((value.temps.reduce((sum, item) => sum + item, 0) / value.temps.length).toFixed(1))
+        ? Number((value.temps.reduce((sum, item) => sum + item, 0) / value.temps.length).toFixed(1))
         : null,
       avgHumidity: value.hums.length
-        ? parseFloat((value.hums.reduce((sum, item) => sum + item, 0) / value.hums.length).toFixed(1))
+        ? Number((value.hums.reduce((sum, item) => sum + item, 0) / value.hums.length).toFixed(1))
         : null,
       productionRate: null,
     })),
@@ -171,21 +235,21 @@ async function main() {
         severity: 'warning',
         message: 'Suhu melebihi 39°C selama 10 menit',
         isRead: true,
-        createdAt: new Date(Date.now() - 86400000 * 2),
+        createdAt: new Date('2026-04-10T08:00:00.000Z'),
       },
       {
         type: 'humidity',
         severity: 'info',
         message: 'Kelembapan stabil di 55% selama 24 jam terakhir',
         isRead: true,
-        createdAt: new Date(Date.now() - 86400000),
+        createdAt: new Date('2026-04-11T08:00:00.000Z'),
       },
       {
         type: 'device_offline',
         severity: 'critical',
-        message: 'ESP32 offline selama 5 menit — sudah kembali online',
+        message: 'ESP32 belum mengirim heartbeat terbaru',
         isRead: false,
-        createdAt: new Date(Date.now() - 3600000),
+        createdAt: new Date('2026-04-12T02:00:00.000Z'),
       },
     ],
   });

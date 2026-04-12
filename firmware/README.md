@@ -8,8 +8,9 @@ Firmware ESP32 untuk sistem monitoring kandang ayam & produksi telur.
 |---|---|---|
 | **ESP32 DevKit V1** | 1 | Board utama (WiFi + Bluetooth) |
 | **DHT11** | 1 | Sensor suhu & kelembapan |
-| **IR Sensor Module** | 1 | Deteksi telur (infrared obstacle) |
-| **Relay Module 3-Channel** | 1 | Kontrol kipas, lampu, buzzer |
+| **IR Sensor Module** | 4 | Deteksi telur per sensor/ayam |
+| **MQ Gas Sensor** | 1 | Deteksi gas/kotoran untuk trigger conveyor |
+| **Relay Module 5-Channel** | 1 | Kontrol 2 kipas, lampu, buzzer, conveyor |
 | **Jumper Wires** | Secukupnya | Male-to-Male & Male-to-Female |
 | **Breadboard / PCB** | 1 | Prototyping |
 | **Power Supply 5V** | 1 | Untuk ESP32 + Relay |
@@ -50,20 +51,30 @@ Firmware ESP32 untuk sistem monitoring kandang ayam & produksi telur.
 > **Tips:** Tambahkan resistor 10KΩ antara VCC dan DATA jika modul DHT11 belum punya pull-up resistor bawaan.
 
 #### IR Sensor Module
-| IR Sensor Pin | ESP32 Pin |
-|---|---|
-| VCC | 3V3 |
-| OUT (Digital) | GPIO 5 |
-| GND | GND |
+| Sensor Telur | Sensor ID | ESP32 Pin |
+|---|---|---|
+| Sensor 1 | A001 | GPIO 32 |
+| Sensor 2 | A002 | GPIO 33 |
+| Sensor 3 | B001 | GPIO 25 |
+| Sensor 4 | B002 | GPIO 26 |
 
 > **Tips:** Atur potentiometer di modul IR untuk sensitivitas deteksi telur.
 
-#### Relay Module (3-Channel)
+#### MQ Gas Sensor
+| Gas Sensor Pin | ESP32 Pin |
+|---|---|
+| VCC | 3V3 |
+| AO | GPIO 34 |
+| GND | GND |
+
+#### Relay Module (5-Channel)
 | Relay Channel | ESP32 Pin | Kontrol |
 |---|---|---|
-| CH1 (IN1) | GPIO 16 | Kipas (Fan) |
-| CH2 (IN2) | GPIO 17 | Lampu (Lamp) |
-| CH3 (IN3) | GPIO 18 | Buzzer |
+| CH1 (IN1) | GPIO 16 | Kipas 1 |
+| CH2 (IN2) | GPIO 17 | Kipas 2 |
+| CH3 (IN3) | GPIO 18 | Lampu |
+| CH4 (IN4) | GPIO 19 | Buzzer |
+| CH5 (IN5) | GPIO 21 | Conveyor |
 
 | Relay Power | ESP32 Pin |
 |---|---|
@@ -117,10 +128,11 @@ Firmware berkomunikasi dengan server di `https://egg.nashiru.me`:
 
 | Method | Endpoint | Fungsi |
 |---|---|---|
-| `POST` | `/api/iot/readings` | Kirim data suhu & kelembapan |
+| `POST` | `/api/iot/readings` | Kirim data suhu, kelembapan, dan gas |
 | `POST` | `/api/iot/heartbeat` | Lapor device masih online |
-| `POST` | `/api/iot/eggs` | Lapor telur terdeteksi |
-| `GET`  | `/api/actuators` | Ambil status relay terbaru |
+| `POST` | `/api/iot/eggs` | Lapor telur terdeteksi per sensor ID |
+| `POST` | `/api/iot/gas` | Lapor gas, server otomatis menyalakan conveyor |
+| `GET`  | `/api/actuators?deviceId=esp32-01` | Ambil status relay terbaru |
 
 ### Format Payload
 
@@ -129,7 +141,9 @@ Firmware berkomunikasi dengan server di `https://egg.nashiru.me`:
 {
   "deviceId": "esp32-01",
   "temperature": 37.5,
-  "humidity": 55.2
+  "humidity": 55.2,
+  "gasDetected": false,
+  "gasValue": 240
 }
 ```
 
@@ -147,18 +161,29 @@ Firmware berkomunikasi dengan server di `https://egg.nashiru.me`:
 ```json
 {
   "deviceId": "esp32-01",
+  "sensorId": "A001",
   "count": 1,
   "notes": "auto-detected"
 }
 ```
 
-**GET /api/actuators** → Response:
+**POST /api/iot/gas**
+```json
+{
+  "deviceId": "esp32-01",
+  "gasDetected": true,
+  "analogValue": 720,
+  "notes": "auto-detected"
+}
+```
+
+**GET /api/actuators?deviceId=esp32-01** → Response:
 ```json
 {
   "actuators": [
-    { "id": "xxx", "type": "fan", "state": true },
-    { "id": "yyy", "type": "lamp", "state": false },
-    { "id": "zzz", "type": "buzzer", "state": false }
+    { "id": "xxx", "name": "Kipas 1", "type": "fan", "state": true },
+    { "id": "yyy", "name": "Kipas 2", "type": "fan", "state": false },
+    { "id": "zzz", "name": "Conveyor", "type": "conveyor", "state": false }
   ]
 }
 ```
@@ -170,10 +195,12 @@ Sebelum flash firmware, pastikan device sudah terdaftar di database:
 1. **Buka web UI** → `https://egg.nashiru.me`
 2. **Buka halaman "Perangkat"**
 3. **Tambah device baru** dengan ID yang sama dengan `DEVICE_ID` di firmware (default: `esp32-01`)
-4. **Tambahkan 3 aktuator** untuk device tersebut:
-   - Type: `fan`, Name: `Kipas`
+4. **Tambahkan aktuator** untuk device tersebut:
+   - Type: `fan`, Name: `Kipas 1`
+   - Type: `fan`, Name: `Kipas 2`
    - Type: `lamp`, Name: `Lampu`
    - Type: `buzzer`, Name: `Buzzer`
+   - Type: `conveyor`, Name: `Conveyor`
 
 > Atau jalankan SQL manual:
 > ```sql
@@ -181,9 +208,11 @@ Sebelum flash firmware, pastikan device sudah terdaftar di database:
 > VALUES ('esp32-01', 'ESP32 Kandang 1', 'ESP32', true);
 > 
 > INSERT INTO "Actuator" (id, "deviceId", name, type, pin, state) VALUES
->   (gen_random_uuid(), 'esp32-01', 'Kipas', 'fan', 16, false),
->   (gen_random_uuid(), 'esp32-01', 'Lampu', 'lamp', 17, false),
->   (gen_random_uuid(), 'esp32-01', 'Buzzer', 'buzzer', 18, false);
+>   (gen_random_uuid(), 'esp32-01', 'Kipas 1', 'fan', 16, false),
+>   (gen_random_uuid(), 'esp32-01', 'Kipas 2', 'fan', 17, false),
+>   (gen_random_uuid(), 'esp32-01', 'Lampu', 'lamp', 18, false),
+>   (gen_random_uuid(), 'esp32-01', 'Buzzer', 'buzzer', 19, false),
+>   (gen_random_uuid(), 'esp32-01', 'Conveyor', 'conveyor', 21, false);
 > ```
 
 ## 📊 Output Serial Monitor

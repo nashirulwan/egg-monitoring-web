@@ -1,6 +1,6 @@
 # Egg Monitoring
 
-IoT system for monitoring poultry farm conditions — temperature, humidity, egg production, and actuator control (fan, lamp, buzzer) via a web dashboard.
+IoT system for monitoring poultry farm conditions — temperature, humidity, gas, egg production per sensor, and actuator control (fan, lamp, buzzer, conveyor) via a web dashboard.
 
 Live: https://egg.nashiru.me
 
@@ -26,14 +26,15 @@ src/lib/           DB client, utilities
 ## Tech Stack
 
 **Server:** Next.js 16 (App Router), TypeScript, Prisma, PostgreSQL
-**Hardware:** ESP32 DevKit V1, DHT11, IR Sensor, 3ch Relay Module
+**Hardware:** ESP32 DevKit V1, DHT11, 4 IR sensors, gas sensor, relay module
 **Infra:** Proxmox LXC, Tailscale, Cloudflare Tunnel
 
 ## Features
 
 - Real-time temperature & humidity monitoring with charts
-- Egg production tracking (daily/monthly stats)
-- Remote actuator control (fan, lamp, buzzer) via web UI
+- Egg production tracking per sensor ID (A001, A002, B001, B002)
+- Remote actuator control (Kipas 1, Kipas 2, Lampu, Buzzer, Conveyor) via web UI
+- Gas detection with automatic conveyor activation
 - Device heartbeat monitoring (online/offline status)
 - Configurable thresholds and auto-control settings
 - Alert system for critical conditions
@@ -66,16 +67,15 @@ The `SERVER_URL` in firmware is already set to `https://egg.nashiru.me`, so the 
 |--------|----------|-------------|
 | POST | `/api/iot/readings` | Submit sensor data |
 | POST | `/api/iot/heartbeat` | Device heartbeat |
-| POST | `/api/iot/eggs` | Report egg detection |
+| POST | `/api/iot/eggs` | Report egg detection per sensorId |
+| POST | `/api/iot/gas` | Report gas detection and auto-enable conveyor |
 
 ### Web API
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/actuators` | List actuators |
-| POST | `/api/actuators/fan/toggle` | Toggle fan |
-| POST | `/api/actuators/buzzer/toggle` | Toggle buzzer |
-| POST | `/api/actuators/lamp/:id/toggle` | Toggle lamp |
+| GET | `/api/actuators?deviceId=esp32-01` | List actuators |
+| POST | `/api/actuators/:id/toggle` | Toggle actuator by id |
 | GET/POST | `/api/settings` | Read/write settings |
 | GET | `/api/dashboard/summary` | Dashboard summary |
 | GET | `/api/alerts` | List alerts |
