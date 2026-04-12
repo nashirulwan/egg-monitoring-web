@@ -34,6 +34,7 @@ const unsigned long SENSOR_INTERVAL = 10000;
 const unsigned long HEARTBEAT_INTERVAL = 30000;
 const unsigned long ACTUATOR_POLL_INTERVAL = 5000;
 const unsigned long EGG_SEND_INTERVAL = 60000;
+const unsigned long HTTP_TIMEOUT = 10000;
 
 #define DHT_PIN 4
 #define DHT_TYPE DHT11
@@ -53,7 +54,6 @@ const unsigned long EGG_SEND_INTERVAL = 60000;
 #define RELAY_CONVEYOR_PIN 21
 
 DHT dht(DHT_PIN, DHT_TYPE);
-WiFiClientSecure secureClient;
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP, "pool.ntp.org", 7 * 3600, 60000);
 
@@ -94,7 +94,6 @@ void connectWiFi() {
   }
 
   if (WiFi.status() == WL_CONNECTED) {
-    secureClient.setInsecure();
     Serial.println();
     Serial.print("Connected! IP: ");
     Serial.println(WiFi.localIP());
@@ -114,7 +113,15 @@ int sendPost(const char* endpoint, const char* jsonBody) {
   }
 
   HTTPClient http;
-  http.begin(secureClient, String(SERVER_URL) + String(endpoint));
+  WiFiClientSecure client;
+  client.setInsecure();
+
+  if (!http.begin(client, String(SERVER_URL) + String(endpoint))) {
+    Serial.printf("  [%s] HTTP begin FAILED\n", endpoint);
+    return -2;
+  }
+
+  http.setTimeout(HTTP_TIMEOUT);
   http.addHeader("Content-Type", "application/json");
 
   int httpCode = http.POST(jsonBody);
@@ -137,7 +144,15 @@ int sendGet(const char* endpoint, String& response) {
   }
 
   HTTPClient http;
-  http.begin(secureClient, String(SERVER_URL) + String(endpoint));
+  WiFiClientSecure client;
+  client.setInsecure();
+
+  if (!http.begin(client, String(SERVER_URL) + String(endpoint))) {
+    Serial.printf("  [GET %s] HTTP begin FAILED\n", endpoint);
+    return -2;
+  }
+
+  http.setTimeout(HTTP_TIMEOUT);
 
   int httpCode = http.GET();
 
@@ -225,6 +240,8 @@ void sendEggData() {
 }
 
 void writeActuatorPin(const char* type, const char* name, bool state) {
+  if (type == nullptr || name == nullptr) return;
+
   if (strcmp(type, "fan") == 0 && strcmp(name, "Kipas 1") == 0) {
     digitalWrite(RELAY_FAN_1_PIN, state ? HIGH : LOW);
   } else if (strcmp(type, "fan") == 0 && strcmp(name, "Kipas 2") == 0) {
@@ -305,6 +322,13 @@ void setup() {
 
   timeClient.begin();
   timeClient.update();
+
+  sendHeartbeat();
+  sendSensorData();
+  pollActuators();
+  lastHeartbeatTime = millis();
+  lastSensorTime = millis();
+  lastActuatorTime = millis();
 
   Serial.println("Setup complete. Starting main loop...");
   Serial.println("========================================");
