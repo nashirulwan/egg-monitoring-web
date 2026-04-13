@@ -30,11 +30,14 @@ Firmware ESP32 untuk sistem monitoring kandang ayam & produksi telur.
 │              └── Relay Module GND                           │
 │                                                             │
 │  GPIO 4  ────┤  DHT11 DATA (signal)                        │
-│  GPIO 5  ────┤  IR Sensor OUT (signal)                     │
 │  GPIO 16 ────┤  Relay CH1 → KIPAS 1                        │
 │  GPIO 17 ────┤  Relay CH2 → KIPAS 2                        │
-│  GPIO 18 ────┤  Relay CH3 → LAMPU                          │
-│  GPIO 19 ────┤  Relay CH4 → MOTOR DC CONVEYOR              │
+│  GPIO 18 ────┤  IR Sensor 1 OUT → A001                     │
+│  GPIO 19 ────┤  IR Sensor 2 OUT → A002                     │
+│  GPIO 21 ────┤  IR Sensor 3 OUT → B001                     │
+│  GPIO 22 ────┤  IR Sensor 4 OUT → B002                     │
+│  GPIO 23 ────┤  Relay CH3 → LAMPU                          │
+│  GPIO 27 ────┤  Relay CH4 → MOTOR DC CONVEYOR              │
 │                                                             │
 │  USB ────────┤  Power & Programming                        │
 └─────────────────────────────────────────────────────────────┘
@@ -54,10 +57,10 @@ Firmware ESP32 untuk sistem monitoring kandang ayam & produksi telur.
 #### IR Sensor Module
 | Sensor Telur | Sensor ID | ESP32 Pin |
 |---|---|---|
-| Sensor 1 | A001 | GPIO 32 |
-| Sensor 2 | A002 | GPIO 33 |
-| Sensor 3 | B001 | GPIO 25 |
-| Sensor 4 | B002 | GPIO 26 |
+| Sensor 1 | A001 | GPIO 18 |
+| Sensor 2 | A002 | GPIO 19 |
+| Sensor 3 | B001 | GPIO 21 |
+| Sensor 4 | B002 | GPIO 22 |
 
 > **Tips:** Atur potentiometer di modul IR untuk sensitivitas deteksi telur.
 
@@ -73,8 +76,8 @@ Firmware ESP32 untuk sistem monitoring kandang ayam & produksi telur.
 |---|---|---|
 | CH1 (IN1) | GPIO 16 | Kipas 1 |
 | CH2 (IN2) | GPIO 17 | Kipas 2 |
-| CH3 (IN3) | GPIO 18 | Lampu |
-| CH4 (IN4) | GPIO 19 | Motor DC Conveyor |
+| CH3 (IN3) | GPIO 23 | Lampu |
+| CH4 (IN4) | GPIO 27 | Motor DC Conveyor |
 
 | Relay Power | ESP32 Pin |
 |---|---|
@@ -208,8 +211,8 @@ Sebelum flash firmware, pastikan device sudah terdaftar di database:
 > INSERT INTO "Actuator" (id, "deviceId", name, type, pin, state) VALUES
 >   (gen_random_uuid(), 'esp32-01', 'Kipas 1', 'fan', 16, false),
 >   (gen_random_uuid(), 'esp32-01', 'Kipas 2', 'fan', 17, false),
->   (gen_random_uuid(), 'esp32-01', 'Lampu', 'lamp', 18, false),
->   (gen_random_uuid(), 'esp32-01', 'Motor DC Conveyor', 'conveyor', 19, false);
+>   (gen_random_uuid(), 'esp32-01', 'Lampu', 'lamp', 23, false),
+>   (gen_random_uuid(), 'esp32-01', 'Motor DC Conveyor', 'conveyor', 27, false);
 > ```
 
 ## 📊 Output Serial Monitor

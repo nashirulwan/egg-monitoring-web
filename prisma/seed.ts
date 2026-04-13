@@ -75,8 +75,8 @@ async function main() {
     data: [
       { id: 'act-fan-1', deviceId: device.id, name: 'Kipas 1', type: 'fan', pin: 16, state: false },
       { id: 'act-fan-2', deviceId: device.id, name: 'Kipas 2', type: 'fan', pin: 17, state: false },
-      { id: 'act-lamp', deviceId: device.id, name: 'Lampu', type: 'lamp', pin: 18, state: true },
-      { id: 'act-conveyor', deviceId: device.id, name: 'Motor DC Conveyor', type: 'conveyor', pin: 19, state: false },
+      { id: 'act-lamp', deviceId: device.id, name: 'Lampu', type: 'lamp', pin: 23, state: true },
+      { id: 'act-conveyor', deviceId: device.id, name: 'Motor DC Conveyor', type: 'conveyor', pin: 27, state: false },
     ],
   });
 
