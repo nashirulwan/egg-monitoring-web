@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Wifi, WifiOff, Cpu, Wind, Lightbulb, Volume2, CircleDot, Signal, HardDrive, Clock, RotateCw } from 'lucide-react';
+import { Wifi, WifiOff, Cpu, Wind, Lightbulb, CircleDot, Signal, HardDrive, Clock, RotateCw } from 'lucide-react';
 
 interface Actuator {
     id: string;
@@ -34,7 +34,7 @@ function formatUptime(seconds: number | null): string {
 }
 
 const actuatorIcons: Record<string, React.ElementType> = {
-    fan: Wind, lamp: Lightbulb, buzzer: Volume2, led: CircleDot, conveyor: RotateCw,
+    fan: Wind, lamp: Lightbulb, led: CircleDot, conveyor: RotateCw,
 };
 
 export default function PerangkatClient({ devices }: { devices: Device[] }) {

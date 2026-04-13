@@ -36,7 +36,7 @@ const defaultSettings: SettingsSection[] = [
             { label: "Heartbeat Interval", description: "Interval heartbeat ESP32 ke server", type: "number", value: 30, unit: "detik", key: "heartbeat_interval" },
             { label: "Timeout Offline", description: "Perangkat dianggap offline setelah tidak ada heartbeat", type: "number", value: 2, unit: "menit", key: "offline_timeout" },
             { label: "Auto-restart Fan", description: "Otomatis nyalakan kipas saat suhu > batas atas", type: "toggle", value: true, key: "auto_fan" },
-            { label: "Auto-alarm Buzzer", description: "Otomatis buzzer saat suhu kritis", type: "toggle", value: false, key: "auto_buzzer" },
+            { label: "Auto Conveyor Gas", description: "Otomatis nyalakan conveyor saat gas tidak aman", type: "toggle", value: true, key: "auto_conveyor_gas" },
         ],
     },
     {

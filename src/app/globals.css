@@ -499,11 +499,6 @@ body {
   color: var(--accent);
 }
 
-.actuator-icon.buzzer {
-  background: rgba(220, 38, 38, 0.08);
-  color: var(--danger);
-}
-
 .actuator-icon.led {
   background: rgba(22, 163, 74, 0.1);
   color: var(--success);

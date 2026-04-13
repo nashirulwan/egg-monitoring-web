@@ -1,6 +1,6 @@
 # Egg Monitoring
 
-IoT system for monitoring poultry farm conditions — temperature, humidity, gas, egg production per sensor, and actuator control (fan, lamp, buzzer, conveyor) via a web dashboard.
+IoT system for monitoring poultry farm conditions — temperature, humidity, gas, egg production per sensor, and actuator control (fan, lamp, conveyor) via a web dashboard.
 
 Live: https://egg.nashiru.me
 
@@ -33,7 +33,7 @@ src/lib/           DB client, utilities
 
 - Real-time temperature & humidity monitoring with charts
 - Egg production tracking per sensor ID (A001, A002, B001, B002)
-- Remote actuator control (Kipas 1, Kipas 2, Lampu, Buzzer, Conveyor) via web UI
+- Remote actuator monitoring/control records for Kipas 1, Kipas 2, Lampu, and Motor DC Conveyor
 - Gas detection with automatic conveyor activation
 - Device heartbeat monitoring (online/offline status)
 - Configurable thresholds and auto-control settings

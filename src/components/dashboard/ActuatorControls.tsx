@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Wind, Lightbulb, Volume2, CircleDot, RotateCw } from 'lucide-react';
+import { Wind, Lightbulb, CircleDot, RotateCw } from 'lucide-react';
 
 interface Actuator {
     id: string;
@@ -13,7 +13,6 @@ interface Actuator {
 const iconMap: Record<string, { icon: React.ElementType; cls: string }> = {
     fan: { icon: Wind, cls: 'fan' },
     lamp: { icon: Lightbulb, cls: 'lamp' },
-    buzzer: { icon: Volume2, cls: 'buzzer' },
     led: { icon: CircleDot, cls: 'led' },
     conveyor: { icon: RotateCw, cls: 'fan' },
 };
@@ -44,7 +43,7 @@ export default function ActuatorControls({ actuators }: { actuators: Actuator[] 
             <div className="chart-card-header" style={{ marginBottom: 16 }}>
                 <div>
                     <div className="chart-card-title">⚡ Kontrol Aktuator</div>
-                    <div className="chart-card-subtitle">Kipas 1, kipas 2, lampu, buzzer, conveyor</div>
+                    <div className="chart-card-subtitle">Kipas 1, kipas 2, lampu, conveyor</div>
                 </div>
             </div>
             <div className="actuator-list">

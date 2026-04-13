@@ -10,7 +10,7 @@ Firmware ESP32 untuk sistem monitoring kandang ayam & produksi telur.
 | **DHT11** | 1 | Sensor suhu & kelembapan |
 | **IR Sensor Module** | 4 | Deteksi telur per sensor/ayam |
 | **MQ Gas Sensor** | 1 | Deteksi gas/kotoran untuk trigger conveyor |
-| **Relay Module 5-Channel** | 1 | Kontrol 2 kipas, lampu, buzzer, conveyor |
+| **Relay Module 4-Channel** | 1 | Kontrol 2 kipas, lampu, motor DC conveyor |
 | **Jumper Wires** | Secukupnya | Male-to-Male & Male-to-Female |
 | **Breadboard / PCB** | 1 | Prototyping |
 | **Power Supply 5V** | 1 | Untuk ESP32 + Relay |
@@ -31,9 +31,10 @@ Firmware ESP32 untuk sistem monitoring kandang ayam & produksi telur.
 │                                                             │
 │  GPIO 4  ────┤  DHT11 DATA (signal)                        │
 │  GPIO 5  ────┤  IR Sensor OUT (signal)                     │
-│  GPIO 16 ────┤  Relay CH1 → KIPAS (Fan)                    │
-│  GPIO 17 ────┤  Relay CH2 → LAMPU (Lamp)                   │
-│  GPIO 18 ────┤  Relay CH3 → BUZZER                         │
+│  GPIO 16 ────┤  Relay CH1 → KIPAS 1                        │
+│  GPIO 17 ────┤  Relay CH2 → KIPAS 2                        │
+│  GPIO 18 ────┤  Relay CH3 → LAMPU                          │
+│  GPIO 19 ────┤  Relay CH4 → MOTOR DC CONVEYOR              │
 │                                                             │
 │  USB ────────┤  Power & Programming                        │
 └─────────────────────────────────────────────────────────────┘
@@ -67,14 +68,13 @@ Firmware ESP32 untuk sistem monitoring kandang ayam & produksi telur.
 | AO | GPIO 34 |
 | GND | GND |
 
-#### Relay Module (5-Channel)
+#### Relay Module (4-Channel)
 | Relay Channel | ESP32 Pin | Kontrol |
 |---|---|---|
 | CH1 (IN1) | GPIO 16 | Kipas 1 |
 | CH2 (IN2) | GPIO 17 | Kipas 2 |
 | CH3 (IN3) | GPIO 18 | Lampu |
-| CH4 (IN4) | GPIO 19 | Buzzer |
-| CH5 (IN5) | GPIO 21 | Conveyor |
+| CH4 (IN4) | GPIO 19 | Motor DC Conveyor |
 
 | Relay Power | ESP32 Pin |
 |---|---|
@@ -131,8 +131,7 @@ Firmware berkomunikasi dengan server di `https://egg.nashiru.me`:
 | `POST` | `/api/iot/readings` | Kirim data suhu, kelembapan, dan gas |
 | `POST` | `/api/iot/heartbeat` | Lapor device masih online |
 | `POST` | `/api/iot/eggs` | Lapor telur terdeteksi per sensor ID |
-| `POST` | `/api/iot/gas` | Lapor gas, server otomatis menyalakan conveyor |
-| `GET`  | `/api/actuators?deviceId=esp32-01` | Ambil status relay terbaru |
+| `POST` | `/api/iot/gas` | Lapor event gas jika dibutuhkan |
 
 ### Format Payload
 
@@ -177,16 +176,16 @@ Firmware berkomunikasi dengan server di `https://egg.nashiru.me`:
 }
 ```
 
-**GET /api/actuators?deviceId=esp32-01** → Response:
-```json
-{
-  "actuators": [
-    { "id": "xxx", "name": "Kipas 1", "type": "fan", "state": true },
-    { "id": "yyy", "name": "Kipas 2", "type": "fan", "state": false },
-    { "id": "zzz", "name": "Conveyor", "type": "conveyor", "state": false }
-  ]
-}
-```
+### Logika Otomatis Relay
+
+| Kondisi | Output |
+|---|---|
+| Suhu `> 28°C` | Kipas 1 dan Kipas 2 ON |
+| Suhu `<= 28°C` | Kipas 1 dan Kipas 2 OFF |
+| Suhu `< 28°C` | Lampu ON |
+| Suhu `>= 28°C` | Lampu OFF |
+| Gas `>= GAS_THRESHOLD` | Motor DC Conveyor ON |
+| Gas `< GAS_THRESHOLD` | Motor DC Conveyor OFF |
 
 ## 🚀 Langkah Setup di Server
 
@@ -199,8 +198,7 @@ Sebelum flash firmware, pastikan device sudah terdaftar di database:
    - Type: `fan`, Name: `Kipas 1`
    - Type: `fan`, Name: `Kipas 2`
    - Type: `lamp`, Name: `Lampu`
-   - Type: `buzzer`, Name: `Buzzer`
-   - Type: `conveyor`, Name: `Conveyor`
+   - Type: `conveyor`, Name: `Motor DC Conveyor`
 
 > Atau jalankan SQL manual:
 > ```sql
@@ -211,8 +209,7 @@ Sebelum flash firmware, pastikan device sudah terdaftar di database:
 >   (gen_random_uuid(), 'esp32-01', 'Kipas 1', 'fan', 16, false),
 >   (gen_random_uuid(), 'esp32-01', 'Kipas 2', 'fan', 17, false),
 >   (gen_random_uuid(), 'esp32-01', 'Lampu', 'lamp', 18, false),
->   (gen_random_uuid(), 'esp32-01', 'Buzzer', 'buzzer', 19, false),
->   (gen_random_uuid(), 'esp32-01', 'Conveyor', 'conveyor', 21, false);
+>   (gen_random_uuid(), 'esp32-01', 'Motor DC Conveyor', 'conveyor', 19, false);
 > ```
 
 ## 📊 Output Serial Monitor
@@ -232,9 +229,7 @@ Setup complete. Starting main loop...
   [/api/iot/readings] HTTP 200 → {"ok":true}
   Heartbeat → RSSI: -45, Heap: 120000, Uptime: 30s
   [/api/iot/heartbeat] HTTP 200 → {"ok":true,"timestamp":"2025-..."}
-  Fan → OFF
-  Lamp → OFF
-  Buzzer → OFF
+  Auto -> Fan1:ON Fan2:ON Lamp:OFF Conveyor:OFF
 ```
 
 ## 🔧 Troubleshooting

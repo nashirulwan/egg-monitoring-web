@@ -82,7 +82,7 @@ model Actuator {
   id        String   @id @default(cuid())
   deviceId  String
   name      String
-  type      String   // fan, lamp, buzzer, led, conveyor
+  type      String   // fan, lamp, conveyor
   pin       Int?
   state     Boolean  @default(false)
   createdAt DateTime @default(now())

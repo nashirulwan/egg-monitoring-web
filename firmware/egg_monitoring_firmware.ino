@@ -6,15 +6,13 @@
  *   - 4 IR sensor  -> hitung telur per ayam/sensor
  *   - MQ gas       -> deteksi gas/kotoran, trigger conveyor
  *
- * Aktuator:
- *   - Kipas 1, Kipas 2, Lampu, Buzzer, Conveyor
+ * Aktuator via relay 4-channel:
+ *   - Kipas 1, Kipas 2, Lampu, Motor DC conveyor
  *
  * Server API:
  *   POST /api/iot/readings  -> suhu, kelembapan, gas optional
  *   POST /api/iot/heartbeat -> status device
  *   POST /api/iot/eggs      -> telur per sensorId
- *   POST /api/iot/gas       -> event gas, conveyor auto-on di server
- *   GET  /api/actuators     -> status aktuator terbaru
  */
 
 #include <WiFi.h>
@@ -32,9 +30,10 @@ const char* DEVICE_ID     = "esp32-01";
 
 const unsigned long SENSOR_INTERVAL = 10000;
 const unsigned long HEARTBEAT_INTERVAL = 30000;
-const unsigned long ACTUATOR_POLL_INTERVAL = 5000;
 const unsigned long EGG_SEND_INTERVAL = 60000;
 const unsigned long HTTP_TIMEOUT = 10000;
+const float FAN_ON_TEMP = 28.0;
+const float LAMP_ON_TEMP = 28.0;
 
 #define DHT_PIN 4
 #define DHT_TYPE DHT11
@@ -50,8 +49,7 @@ const unsigned long HTTP_TIMEOUT = 10000;
 #define RELAY_FAN_1_PIN 16
 #define RELAY_FAN_2_PIN 17
 #define RELAY_LAMP_PIN 18
-#define RELAY_BUZZER_PIN 19
-#define RELAY_CONVEYOR_PIN 21
+#define RELAY_CONVEYOR_PIN 19
 
 DHT dht(DHT_PIN, DHT_TYPE);
 WiFiUDP ntpUDP;
@@ -64,7 +62,6 @@ const unsigned long IR_DEBOUNCE_MS = 1000;
 
 unsigned long lastSensorTime = 0;
 unsigned long lastHeartbeatTime = 0;
-unsigned long lastActuatorTime = 0;
 unsigned long lastEggSendTime = 0;
 
 void IRAM_ATTR handleEggSensor(int index) {
@@ -177,6 +174,15 @@ void sendSensorData() {
     return;
   }
 
+  bool fansOn = temp > FAN_ON_TEMP;
+  bool lampOn = temp < LAMP_ON_TEMP;
+  bool conveyorOn = gasDetected;
+
+  digitalWrite(RELAY_FAN_1_PIN, fansOn ? HIGH : LOW);
+  digitalWrite(RELAY_FAN_2_PIN, fansOn ? HIGH : LOW);
+  digitalWrite(RELAY_LAMP_PIN, lampOn ? HIGH : LOW);
+  digitalWrite(RELAY_CONVEYOR_PIN, conveyorOn ? HIGH : LOW);
+
   StaticJsonDocument<192> doc;
   doc["deviceId"] = DEVICE_ID;
   doc["temperature"] = temp;
@@ -189,6 +195,11 @@ void sendSensorData() {
 
   Serial.printf("  Sensor -> temp: %.1f C, hum: %.1f%%, gas: %d (%s)\n",
                 temp, hum, gasValue, gasDetected ? "DETECTED" : "safe");
+  Serial.printf("  Auto -> Fan1:%s Fan2:%s Lamp:%s Conveyor:%s\n",
+                fansOn ? "ON" : "OFF",
+                fansOn ? "ON" : "OFF",
+                lampOn ? "ON" : "OFF",
+                conveyorOn ? "ON" : "OFF");
   sendPost("/api/iot/readings", jsonBuf);
 
   // /api/iot/readings already records gas and auto-enables conveyor when gasDetected is true.
@@ -239,52 +250,6 @@ void sendEggData() {
   }
 }
 
-void writeActuatorPin(const char* type, const char* name, bool state) {
-  if (type == nullptr || name == nullptr) return;
-
-  if (strcmp(type, "fan") == 0 && strcmp(name, "Kipas 1") == 0) {
-    digitalWrite(RELAY_FAN_1_PIN, state ? HIGH : LOW);
-  } else if (strcmp(type, "fan") == 0 && strcmp(name, "Kipas 2") == 0) {
-    digitalWrite(RELAY_FAN_2_PIN, state ? HIGH : LOW);
-  } else if (strcmp(type, "lamp") == 0) {
-    digitalWrite(RELAY_LAMP_PIN, state ? HIGH : LOW);
-  } else if (strcmp(type, "buzzer") == 0) {
-    digitalWrite(RELAY_BUZZER_PIN, state ? HIGH : LOW);
-  } else if (strcmp(type, "conveyor") == 0) {
-    digitalWrite(RELAY_CONVEYOR_PIN, state ? HIGH : LOW);
-  }
-}
-
-void pollActuators() {
-  String response;
-  String endpoint = String("/api/actuators?deviceId=") + String(DEVICE_ID);
-  int httpCode = sendGet(endpoint.c_str(), response);
-
-  if (httpCode != 200 || response.length() == 0) {
-    Serial.println("  Poll actuators FAILED");
-    return;
-  }
-
-  StaticJsonDocument<1024> doc;
-  DeserializationError err = deserializeJson(doc, response);
-
-  if (err) {
-    Serial.printf("  JSON parse error: %s\n", err.c_str());
-    return;
-  }
-
-  JsonArray actuators = doc["actuators"];
-
-  for (JsonObject act : actuators) {
-    const char* type = act["type"];
-    const char* name = act["name"];
-    bool state = act["state"];
-
-    writeActuatorPin(type, name, state);
-    Serial.printf("  %s -> %s\n", name, state ? "ON" : "OFF");
-  }
-}
-
 void setup() {
   Serial.begin(115200);
   delay(1000);
@@ -299,12 +264,10 @@ void setup() {
   pinMode(RELAY_FAN_1_PIN, OUTPUT);
   pinMode(RELAY_FAN_2_PIN, OUTPUT);
   pinMode(RELAY_LAMP_PIN, OUTPUT);
-  pinMode(RELAY_BUZZER_PIN, OUTPUT);
   pinMode(RELAY_CONVEYOR_PIN, OUTPUT);
   digitalWrite(RELAY_FAN_1_PIN, LOW);
   digitalWrite(RELAY_FAN_2_PIN, LOW);
   digitalWrite(RELAY_LAMP_PIN, LOW);
-  digitalWrite(RELAY_BUZZER_PIN, LOW);
   digitalWrite(RELAY_CONVEYOR_PIN, LOW);
 
   pinMode(EGG_SENSOR_1_PIN, INPUT_PULLUP);
@@ -325,10 +288,8 @@ void setup() {
 
   sendHeartbeat();
   sendSensorData();
-  pollActuators();
   lastHeartbeatTime = millis();
   lastSensorTime = millis();
-  lastActuatorTime = millis();
 
   Serial.println("Setup complete. Starting main loop...");
   Serial.println("========================================");
@@ -357,11 +318,6 @@ void loop() {
   if (now - lastEggSendTime >= EGG_SEND_INTERVAL) {
     lastEggSendTime = now;
     sendEggData();
-  }
-
-  if (now - lastActuatorTime >= ACTUATOR_POLL_INTERVAL) {
-    lastActuatorTime = now;
-    pollActuators();
   }
 
   delay(500);
