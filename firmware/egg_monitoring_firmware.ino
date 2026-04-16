@@ -23,8 +23,8 @@
 #include <NTPClient.h>
 #include <WiFiUdp.h>
 
-const char* WIFI_SSID     = "NamaWiFi";
-const char* WIFI_PASSWORD = "PasswordWiFi";
+const char* WIFI_SSID     = "x2";
+const char* WIFI_PASSWORD = "qwertyui";
 const char* SERVER_URL    = "https://egg.nashiru.me";
 const char* DEVICE_ID     = "esp32-01";
 
@@ -34,6 +34,10 @@ const unsigned long EGG_SEND_INTERVAL = 60000;
 const unsigned long HTTP_TIMEOUT = 10000;
 const float FAN_ON_TEMP = 28.0;
 const float LAMP_ON_TEMP = 28.0;
+const float MIN_VALID_TEMP = 10.0;
+const float MAX_VALID_TEMP = 60.0;
+const float MIN_VALID_HUMIDITY = 10.0;
+const float MAX_VALID_HUMIDITY = 100.0;
 
 #define DHT_PIN 4
 #define DHT_TYPE DHT11
@@ -172,6 +176,11 @@ void sendSensorData() {
 
   if (isnan(temp) || isnan(hum)) {
     Serial.println("  DHT11 read FAILED, skipping sensor report");
+    return;
+  }
+
+  if (temp < MIN_VALID_TEMP || temp > MAX_VALID_TEMP || hum < MIN_VALID_HUMIDITY || hum > MAX_VALID_HUMIDITY) {
+    Serial.printf("  DHT11 invalid value -> temp: %.1f C, hum: %.1f%%, skipping sensor report\n", temp, hum);
     return;
   }
 
