@@ -2,7 +2,7 @@
  * EGG MONITORING & CONTROL - ESP32 FIRMWARE
  *
  * Sensor:
- *   - DHT11        -> suhu & kelembapan
+ *   - DHT22        -> suhu & kelembapan
  *   - 4 IR sensor  -> hitung telur per ayam/sensor
  *   - MQ gas       -> deteksi gas/kotoran, trigger conveyor
  *
@@ -40,7 +40,7 @@ const float MIN_VALID_HUMIDITY = 10.0;
 const float MAX_VALID_HUMIDITY = 100.0;
 
 #define DHT_PIN 4
-#define DHT_TYPE DHT11
+#define DHT_TYPE DHT22
 
 #define EGG_SENSOR_1_PIN 18
 #define EGG_SENSOR_2_PIN 19
@@ -175,12 +175,12 @@ void sendSensorData() {
   int gasValue = gasDetected ? 1000 : 0;
 
   if (isnan(temp) || isnan(hum)) {
-    Serial.println("  DHT11 read FAILED, skipping sensor report");
+    Serial.println("  DHT22 read FAILED, skipping sensor report");
     return;
   }
 
   if (temp < MIN_VALID_TEMP || temp > MAX_VALID_TEMP || hum < MIN_VALID_HUMIDITY || hum > MAX_VALID_HUMIDITY) {
-    Serial.printf("  DHT11 invalid value -> temp: %.1f C, hum: %.1f%%, skipping sensor report\n", temp, hum);
+    Serial.printf("  DHT22 invalid value -> temp: %.1f C, hum: %.1f%%, skipping sensor report\n", temp, hum);
     return;
   }
 

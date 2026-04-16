@@ -7,7 +7,7 @@ Firmware ESP32 untuk sistem monitoring kandang ayam & produksi telur.
 | Komponen | Qty | Keterangan |
 |---|---|---|
 | **ESP32 DevKit V1** | 1 | Board utama (WiFi + Bluetooth) |
-| **DHT11** | 1 | Sensor suhu & kelembapan |
+| **DHT22 / AM2302** | 1 | Sensor suhu & kelembapan |
 | **IR Sensor Module** | 4 | Deteksi telur per sensor/ayam |
 | **MQ Gas Sensor** | 1 | Deteksi gas/kotoran untuk trigger conveyor |
 | **Relay Module 4-Channel** | 1 | Kontrol 2 kipas, lampu, motor DC conveyor |
@@ -21,15 +21,15 @@ Firmware ESP32 untuk sistem monitoring kandang ayam & produksi telur.
 ┌─────────────────────────────────────────────────────────────┐
 │                        ESP32 DEVKIT                         │
 │                                                             │
-│  3V3 ────────┬── DHT11 VCC                                  │
+│  3V3 ────────┬── DHT22 VCC                                  │
 │              ├── IR Sensor VCC                              │
 │              └── Relay Module VCC                           │
 │                                                             │
-│  GND ────────┬── DHT11 GND                                  │
+│  GND ────────┬── DHT22 GND                                  │
 │              ├── IR Sensor GND                              │
 │              └── Relay Module GND                           │
 │                                                             │
-│  GPIO 4  ────┤  DHT11 DATA (signal)                        │
+│  GPIO 4  ────┤  DHT22 DATA (signal)                        │
 │  GPIO 5  ────┤  MQ Gas Sensor DO (D5)                      │
 │  GPIO 16 ────┤  Relay CH1 → KIPAS 1                        │
 │  GPIO 17 ────┤  Relay CH2 → KIPAS 2                        │
@@ -46,14 +46,14 @@ Firmware ESP32 untuk sistem monitoring kandang ayam & produksi telur.
 
 ### Detail Koneksi
 
-#### DHT11
-| DHT11 Pin | ESP32 Pin |
+#### DHT22 / AM2302
+| DHT22 Pin | ESP32 Pin |
 |---|---|
 | VCC (+) | 3V3 |
 | DATA (OUT) | GPIO 4 |
 | GND (-) | GND |
 
-> **Tips:** Tambahkan resistor 10KΩ antara VCC dan DATA jika modul DHT11 belum punya pull-up resistor bawaan.
+> **Tips:** Tambahkan resistor 10KΩ antara VCC dan DATA jika modul DHT22 belum punya pull-up resistor bawaan.
 
 #### IR Sensor Module
 | Sensor Telur | Sensor ID | ESP32 Pin |
@@ -244,7 +244,7 @@ Setup complete. Starting main loop...
 |---|---|
 | WiFi tidak connect | Cek SSID & password, pastikan WiFi 2.4GHz (ESP32 tidak support 5GHz) |
 | HTTP 404 dari server | Cek `SERVER_URL` dan pastikan device sudah terdaftar di DB |
-| DHT11 baca NaN | Cek wiring, pastikan pin DATA di GPIO 4, tambah pull-up resistor 10K |
+| DHT22 baca NaN | Cek wiring, pastikan pin DATA di GPIO 4, tambah pull-up resistor 10K |
 | Relay tidak nyala | Cek power relay (butuh 5V), cek pin signal di GPIO yang benar |
 | IR sensor tidak trigger | Atur potentiometer sensitivitas di modul IR |
 | Boot loop | Pastikan power supply cukup (min 500mA untuk ESP32 + relay) |
