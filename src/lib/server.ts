@@ -6,6 +6,9 @@ export function getRangeStart(range: string) {
   const from = new Date(now);
 
   switch (range) {
+    case '1h':
+      from.setHours(from.getHours() - 1);
+      return from;
     case '7d':
       from.setDate(from.getDate() - 7);
       return from;
@@ -53,7 +56,9 @@ export async function getSensorHistory(
   const now = new Date();
   const from = getRangeStart(range);
   const bucket =
-    range === '24h'
+    range === '1h'
+      ? Prisma.raw(`date_trunc('minute', "createdAt")`)
+      : range === '24h'
       ? Prisma.raw(`date_trunc('hour', "createdAt")`)
       : Prisma.raw(`date_trunc('day', "createdAt")`);
   const column =

@@ -5,7 +5,7 @@ import {
     AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
 
-type Range = '24h' | '7d' | '30d';
+type Range = '1h' | '24h' | '7d' | '30d';
 
 interface DataPoint {
     time: string;
@@ -19,7 +19,7 @@ interface ChartProps {
 }
 
 const formatLabel = (type: 'temperature' | 'humidity', range: Range) => {
-    if (range === '24h') return (t: unknown) => String(t).slice(11, 16);
+    if (range === '1h' || range === '24h') return (t: unknown) => String(t).slice(11, 16);
     return (t: unknown) => {
         const d = new Date(String(t));
         return `${d.getDate()}/${d.getMonth() + 1}`;
@@ -41,7 +41,7 @@ const getYAxisDomain = (type: 'temperature' | 'humidity') => {
 };
 
 export default function SensorChart({ type }: ChartProps) {
-    const [range, setRange] = useState<Range>('24h');
+    const [range, setRange] = useState<Range>('1h');
     const [data, setData] = useState<DataPoint[]>([]);
     const [loading, setLoading] = useState(true);
     const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -66,7 +66,7 @@ export default function SensorChart({ type }: ChartProps) {
         };
 
         fetchData(true);
-        if (range === '24h') {
+        if (range === '1h' || range === '24h') {
             interval = window.setInterval(() => fetchData(false), REFRESH_INTERVAL_MS);
         }
 
@@ -91,11 +91,11 @@ export default function SensorChart({ type }: ChartProps) {
                     </div>
                     <div className="chart-card-subtitle">
                         {isTemp ? 'Suhu kandang dari DHT22' : 'Kelembapan kandang dari DHT22'}
-                        {range === '24h' && lastUpdated ? ` · update ${lastUpdated.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` : ''}
+                        {(range === '1h' || range === '24h') && lastUpdated ? ` · update ${lastUpdated.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` : ''}
                     </div>
                 </div>
                 <div className="range-tabs">
-                    {(['24h', '7d', '30d'] as Range[]).map((r) => (
+                    {(['1h', '24h', '7d', '30d'] as Range[]).map((r) => (
                         <button
                             key={r}
                             className={`range-tab ${range === r ? 'active' : ''}`}

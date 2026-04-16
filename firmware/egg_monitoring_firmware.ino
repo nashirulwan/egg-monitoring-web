@@ -60,13 +60,19 @@ WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP, "pool.ntp.org", 7 * 3600, 60000);
 
 const char* EGG_SENSOR_IDS[4] = { "A001", "A002", "B001", "B002" };
+const int EGG_SENSOR_PINS[4] = { EGG_SENSOR_1_PIN, EGG_SENSOR_2_PIN, EGG_SENSOR_3_PIN, EGG_SENSOR_4_PIN };
 volatile int eggCounts[4] = { 0, 0, 0, 0 };
 volatile unsigned long lastEggTriggers[4] = { 0, 0, 0, 0 };
+int lastEggStates[4] = { HIGH, HIGH, HIGH, HIGH };
 const unsigned long IR_DEBOUNCE_MS = 1000;
+const unsigned long IR_POLL_INTERVAL = 100;
+const unsigned long IR_DEBUG_INTERVAL = 5000;
 
 unsigned long lastSensorTime = 0;
 unsigned long lastHeartbeatTime = 0;
 unsigned long lastEggSendTime = 0;
+unsigned long lastIrPollTime = 0;
+unsigned long lastIrDebugTime = 0;
 
 void IRAM_ATTR handleEggSensor(int index) {
   unsigned long now = millis();
@@ -80,6 +86,28 @@ void IRAM_ATTR eggSensor1Interrupt() { handleEggSensor(0); }
 void IRAM_ATTR eggSensor2Interrupt() { handleEggSensor(1); }
 void IRAM_ATTR eggSensor3Interrupt() { handleEggSensor(2); }
 void IRAM_ATTR eggSensor4Interrupt() { handleEggSensor(3); }
+
+void pollEggSensors() {
+  unsigned long now = millis();
+  for (int i = 0; i < 4; i++) {
+    int state = digitalRead(EGG_SENSOR_PINS[i]);
+    if (state == LOW && lastEggStates[i] == HIGH && now - lastEggTriggers[i] > IR_DEBOUNCE_MS) {
+      lastEggTriggers[i] = now;
+      eggCounts[i]++;
+      Serial.printf("  IR trigger -> sensor: %s, raw: LOW, pending: %d\n", EGG_SENSOR_IDS[i], eggCounts[i]);
+    }
+    lastEggStates[i] = state;
+  }
+
+  if (now - lastIrDebugTime >= IR_DEBUG_INTERVAL) {
+    lastIrDebugTime = now;
+    Serial.printf("  IR raw -> A001:%s A002:%s B001:%s B002:%s\n",
+                  digitalRead(EGG_SENSOR_1_PIN) == LOW ? "LOW" : "HIGH",
+                  digitalRead(EGG_SENSOR_2_PIN) == LOW ? "LOW" : "HIGH",
+                  digitalRead(EGG_SENSOR_3_PIN) == LOW ? "LOW" : "HIGH",
+                  digitalRead(EGG_SENSOR_4_PIN) == LOW ? "LOW" : "HIGH");
+  }
+}
 
 void connectWiFi() {
   Serial.print("Connecting to WiFi");
@@ -283,13 +311,11 @@ void setup() {
   pinMode(EGG_SENSOR_2_PIN, INPUT_PULLUP);
   pinMode(EGG_SENSOR_3_PIN, INPUT_PULLUP);
   pinMode(EGG_SENSOR_4_PIN, INPUT_PULLUP);
+  for (int i = 0; i < 4; i++) {
+    lastEggStates[i] = digitalRead(EGG_SENSOR_PINS[i]);
+  }
   analogReadResolution(12);
   pinMode(GAS_SENSOR_PIN, INPUT);
-
-  attachInterrupt(digitalPinToInterrupt(EGG_SENSOR_1_PIN), eggSensor1Interrupt, FALLING);
-  attachInterrupt(digitalPinToInterrupt(EGG_SENSOR_2_PIN), eggSensor2Interrupt, FALLING);
-  attachInterrupt(digitalPinToInterrupt(EGG_SENSOR_3_PIN), eggSensor3Interrupt, FALLING);
-  attachInterrupt(digitalPinToInterrupt(EGG_SENSOR_4_PIN), eggSensor4Interrupt, FALLING);
 
   connectWiFi();
 
@@ -314,6 +340,11 @@ void loop() {
   }
 
   timeClient.update();
+
+  if (now - lastIrPollTime >= IR_POLL_INTERVAL) {
+    lastIrPollTime = now;
+    pollEggSensors();
+  }
 
   if (now - lastSensorTime >= SENSOR_INTERVAL) {
     lastSensorTime = now;
