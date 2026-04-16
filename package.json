@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "mqtt:subscriber": "tsx scripts/mqtt-subscriber.ts",
     "lint": "eslint",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
@@ -14,6 +15,7 @@
   "dependencies": {
     "@prisma/client": "^6.6.0",
     "lucide-react": "^1.7.0",
+    "mqtt": "^5.15.1",
     "next": "16.2.2",
     "react": "19.2.4",
     "react-dom": "19.2.4",

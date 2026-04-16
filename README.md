@@ -10,6 +10,12 @@ Live: https://egg.nashiru.me
 ESP32 + sensors --HTTPS--> Cloudflare Tunnel --> Next.js API --> PostgreSQL
 ```
 
+Optional MQTT comparison path:
+
+```
+ESP32 + sensors --MQTT--> MQTT broker --> MQTT subscriber --> PostgreSQL / HTTP API
+```
+
 The ESP32 reads sensors and pushes data to the server. The web dashboard displays real-time data and lets users control actuators remotely.
 
 ## Repo Structure
@@ -17,6 +23,7 @@ The ESP32 reads sensors and pushes data to the server. The web dashboard display
 ```
 firmware/          ESP32 Arduino code + wiring guide
 prisma/            Database schema
+scripts/           Background workers such as MQTT subscriber/bridge
 src/app/api/       REST API routes (IoT, actuators, dashboard, settings)
 src/app/           Next.js pages (dashboard, alerts, devices, etc.)
 src/components/    React components
@@ -52,6 +59,34 @@ npm install
 npx prisma db push
 npm run dev
 ```
+
+### MQTT Comparison Worker
+
+The MQTT worker subscribes to MQTT topics and handles the same JSON payloads as the HTTP IoT API.
+
+Topics:
+
+```text
+egg-monitoring/esp32-01/readings
+egg-monitoring/esp32-01/heartbeat
+egg-monitoring/esp32-01/eggs
+```
+
+Database mode, for a broker reachable by the server:
+
+```bash
+MQTT_BROKER_URL=mqtt://127.0.0.1:1883 npm run mqtt:subscriber
+```
+
+Bridge mode, useful when the broker runs on a laptop during lab testing:
+
+```bash
+MQTT_BROKER_URL=mqtt://127.0.0.1:1883 \
+MQTT_FORWARD_BASE_URL=https://egg.nashiru.me \
+npm run mqtt:subscriber
+```
+
+In bridge mode, MQTT messages are forwarded to the existing HTTP API. In database mode, messages are saved directly through Prisma and logged in `MqttMessageLog`.
 
 ### ESP32
 
