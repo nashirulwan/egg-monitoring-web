@@ -29,30 +29,41 @@ const formatLabel = (type: 'temperature' | 'humidity', range: Range) => {
 const tooltipFormatter = (type: 'temperature' | 'humidity') =>
     (value: unknown) => `${Number(value ?? 0).toFixed(1)}${type === 'temperature' ? '°C' : '%'}`;
 
+const REFRESH_INTERVAL_MS = 5000;
+
 export default function SensorChart({ type }: ChartProps) {
     const [range, setRange] = useState<Range>('24h');
     const [data, setData] = useState<DataPoint[]>([]);
     const [loading, setLoading] = useState(true);
+    const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
     useEffect(() => {
         let active = true;
-        const timeout = window.setTimeout(() => {
-            setLoading(true);
+        let interval: number | undefined;
+
+        const fetchData = (showLoading = false) => {
+            if (showLoading) setLoading(true);
             fetch(`/api/dashboard/${type === 'temperature' ? 'temperature' : 'humidity'}-history?range=${range}`)
                 .then((r) => r.json())
                 .then((d) => {
                     if (!active) return;
                     setData(d.data || []);
+                    setLastUpdated(new Date());
                     setLoading(false);
                 })
                 .catch(() => {
                     if (active) setLoading(false);
                 });
-        }, 0);
+        };
+
+        fetchData(true);
+        if (range === '24h') {
+            interval = window.setInterval(() => fetchData(false), REFRESH_INTERVAL_MS);
+        }
 
         return () => {
             active = false;
-            window.clearTimeout(timeout);
+            if (interval) window.clearInterval(interval);
         };
     }, [type, range]);
 
@@ -71,6 +82,7 @@ export default function SensorChart({ type }: ChartProps) {
                     </div>
                     <div className="chart-card-subtitle">
                         {isTemp ? 'Suhu inkubasi (target: 37.5°C)' : 'Kelembapan kandang (target: 55%)'}
+                        {range === '24h' && lastUpdated ? ` · update ${lastUpdated.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` : ''}
                     </div>
                 </div>
                 <div className="range-tabs">
