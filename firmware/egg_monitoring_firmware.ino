@@ -43,8 +43,8 @@ const float LAMP_ON_TEMP = 28.0;
 #define EGG_SENSOR_3_PIN 21
 #define EGG_SENSOR_4_PIN 22
 
-#define GAS_SENSOR_PIN 34
-#define GAS_THRESHOLD 600
+#define GAS_SENSOR_PIN 5
+#define GAS_DETECTED_LEVEL LOW
 
 #define RELAY_FAN_1_PIN 16
 #define RELAY_FAN_2_PIN 17
@@ -166,8 +166,9 @@ int sendGet(const char* endpoint, String& response) {
 void sendSensorData() {
   float temp = dht.readTemperature();
   float hum = dht.readHumidity();
-  int gasValue = analogRead(GAS_SENSOR_PIN);
-  bool gasDetected = gasValue >= GAS_THRESHOLD;
+  int gasSignal = digitalRead(GAS_SENSOR_PIN);
+  bool gasDetected = gasSignal == GAS_DETECTED_LEVEL;
+  int gasValue = gasDetected ? 1000 : 0;
 
   if (isnan(temp) || isnan(hum)) {
     Serial.println("  DHT11 read FAILED, skipping sensor report");
@@ -274,7 +275,7 @@ void setup() {
   pinMode(EGG_SENSOR_2_PIN, INPUT_PULLUP);
   pinMode(EGG_SENSOR_3_PIN, INPUT_PULLUP);
   pinMode(EGG_SENSOR_4_PIN, INPUT_PULLUP);
-  pinMode(GAS_SENSOR_PIN, INPUT);
+  pinMode(GAS_SENSOR_PIN, INPUT_PULLUP);
 
   attachInterrupt(digitalPinToInterrupt(EGG_SENSOR_1_PIN), eggSensor1Interrupt, FALLING);
   attachInterrupt(digitalPinToInterrupt(EGG_SENSOR_2_PIN), eggSensor2Interrupt, FALLING);

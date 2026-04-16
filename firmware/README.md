@@ -30,6 +30,7 @@ Firmware ESP32 untuk sistem monitoring kandang ayam & produksi telur.
 │              └── Relay Module GND                           │
 │                                                             │
 │  GPIO 4  ────┤  DHT11 DATA (signal)                        │
+│  GPIO 5  ────┤  MQ Gas Sensor DO (D5)                      │
 │  GPIO 16 ────┤  Relay CH1 → KIPAS 1                        │
 │  GPIO 17 ────┤  Relay CH2 → KIPAS 2                        │
 │  GPIO 18 ────┤  IR Sensor 1 OUT → A001                     │
@@ -68,8 +69,10 @@ Firmware ESP32 untuk sistem monitoring kandang ayam & produksi telur.
 | Gas Sensor Pin | ESP32 Pin |
 |---|---|
 | VCC | 3V3 |
-| AO | GPIO 34 |
+| DO | D5 / GPIO 5 |
 | GND | GND |
+
+> Firmware membaca sensor gas dari pin digital D5/GPIO5 dengan `INPUT_PULLUP`. Default firmware menganggap gas terdeteksi saat sinyal DO `LOW`. Nilai `gasValue` yang dikirim ke server menjadi `1000` saat gas terdeteksi dan `0` saat aman. Jika ingin angka ADC asli, pindahkan kabel gas ke pin ADC ESP32 seperti GPIO 34 dan ubah firmware kembali ke `analogRead`.
 
 #### Relay Module (4-Channel)
 | Relay Channel | ESP32 Pin | Kontrol |
@@ -145,7 +148,7 @@ Firmware berkomunikasi dengan server di `https://egg.nashiru.me`:
   "temperature": 37.5,
   "humidity": 55.2,
   "gasDetected": false,
-  "gasValue": 240
+  "gasValue": 0
 }
 ```
 
@@ -187,8 +190,8 @@ Firmware berkomunikasi dengan server di `https://egg.nashiru.me`:
 | Suhu `<= 28°C` | Kipas 1 dan Kipas 2 OFF |
 | Suhu `< 28°C` | Lampu ON |
 | Suhu `>= 28°C` | Lampu OFF |
-| Gas `>= GAS_THRESHOLD` | Motor DC Conveyor ON |
-| Gas `< GAS_THRESHOLD` | Motor DC Conveyor OFF |
+| D5/GPIO5 `LOW` | Motor DC Conveyor ON |
+| D5/GPIO5 `HIGH` | Motor DC Conveyor OFF |
 
 ## 🚀 Langkah Setup di Server
 
