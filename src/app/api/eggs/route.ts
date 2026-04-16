@@ -22,12 +22,14 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const page = parseInt(searchParams.get('page') || '1', 10);
     const limit = parseInt(searchParams.get('limit') || '50', 10);
+    const now = new Date();
     const { month, start, end, daysInMonth } = getMonthRange(searchParams.get('month'));
+    const cutoff = end > now ? now : end;
 
     const where: Prisma.EggEventWhereInput = {
       createdAt: {
         gte: start,
-        lt: end,
+        lt: cutoff,
       },
     };
 
@@ -45,7 +47,7 @@ export async function GET(req: NextRequest) {
           COALESCE(SUM("count"), 0)::int AS total,
           COUNT(*)::int AS events
         FROM "EggEvent"
-        WHERE "createdAt" >= ${start} AND "createdAt" < ${end}
+        WHERE "createdAt" >= ${start} AND "createdAt" < ${cutoff}
         GROUP BY 1
         ORDER BY 1 ASC
       `),
@@ -55,7 +57,7 @@ export async function GET(req: NextRequest) {
           "sensorId",
           COALESCE(SUM("count"), 0)::int AS total
         FROM "EggEvent"
-        WHERE "createdAt" >= ${start} AND "createdAt" < ${end}
+        WHERE "createdAt" >= ${start} AND "createdAt" < ${cutoff}
         GROUP BY 1, 2
         ORDER BY 1 ASC, 2 ASC
       `),
@@ -72,7 +74,7 @@ export async function GET(req: NextRequest) {
         LEFT JOIN "EggEvent" e
           ON e."sensorId" = sensors."sensorId"
           AND e."createdAt" >= ${start}
-          AND e."createdAt" < ${end}
+          AND e."createdAt" < ${cutoff}
         GROUP BY sensors."sensorId"
         ORDER BY sensors."sensorId" ASC
       `),

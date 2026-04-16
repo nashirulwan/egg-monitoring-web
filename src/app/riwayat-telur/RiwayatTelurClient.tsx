@@ -42,6 +42,8 @@ const sensorColors: Record<string, string> = {
     B002: '#2563EB',
 };
 
+const REFRESH_INTERVAL_MS = 5000;
+
 const monthOptions = [
     { value: '01', label: 'Januari' },
     { value: '02', label: 'Februari' },
@@ -91,6 +93,16 @@ export default function RiwayatTelurClient() {
         }, 0);
         return () => window.clearTimeout(timeout);
     }, [fetchData]);
+
+    useEffect(() => {
+        if (pagination.page !== 1) return undefined;
+
+        const interval = window.setInterval(() => {
+            void fetchData(1);
+        }, REFRESH_INTERVAL_MS);
+
+        return () => window.clearInterval(interval);
+    }, [fetchData, pagination.page]);
 
     const totalEggs = dailySummary.reduce((sum, d) => sum + d.total, 0);
     const avgPerDay = daysInMonth > 0 ? (totalEggs / daysInMonth).toFixed(2) : '0';
