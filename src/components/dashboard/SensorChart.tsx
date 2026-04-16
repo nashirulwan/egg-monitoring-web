@@ -31,6 +31,15 @@ const tooltipFormatter = (type: 'temperature' | 'humidity') =>
 
 const REFRESH_INTERVAL_MS = 5000;
 
+const getYAxisDomain = (type: 'temperature' | 'humidity') => {
+    if (type === 'humidity') return [0, 100] as const;
+
+    return [
+        (dataMin: number) => Math.floor(Math.min(20, dataMin - 2)),
+        (dataMax: number) => Math.ceil(Math.max(40, dataMax + 2)),
+    ] as const;
+};
+
 export default function SensorChart({ type }: ChartProps) {
     const [range, setRange] = useState<Range>('24h');
     const [data, setData] = useState<DataPoint[]>([]);
@@ -81,7 +90,7 @@ export default function SensorChart({ type }: ChartProps) {
                         {isTemp ? '🌡️ Grafik Suhu' : '💧 Grafik Kelembapan'}
                     </div>
                     <div className="chart-card-subtitle">
-                        {isTemp ? 'Suhu inkubasi (target: 37.5°C)' : 'Kelembapan kandang (target: 55%)'}
+                        {isTemp ? 'Suhu kandang dari DHT22' : 'Kelembapan kandang dari DHT22'}
                         {range === '24h' && lastUpdated ? ` · update ${lastUpdated.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` : ''}
                     </div>
                 </div>
@@ -123,7 +132,7 @@ export default function SensorChart({ type }: ChartProps) {
                             axisLine={false}
                             tickLine={false}
                             tickFormatter={(v) => `${v}${unit}`}
-                            domain={isTemp ? [35, 40] : [40, 70]}
+                            domain={getYAxisDomain(type)}
                         />
                         <Tooltip
                             contentStyle={{

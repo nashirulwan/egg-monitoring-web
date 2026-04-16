@@ -8,17 +8,15 @@ export async function GET(req: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50', 10);
     const from = searchParams.get('from');
     const to = searchParams.get('to');
+    const createdAt = {
+      ...(from ? { gte: new Date(from) } : {}),
+      lte: to ? new Date(to) : new Date(),
+    };
 
     const where = {
-      ...(from ? { createdAt: { gte: new Date(from) } } : {}),
-      ...(to
-        ? {
-            createdAt: {
-              ...(from ? { gte: new Date(from) } : {}),
-              lte: new Date(to),
-            },
-          }
-        : {}),
+      temperature: { gte: 10, lte: 60 },
+      humidity: { gte: 10, lte: 100 },
+      createdAt,
     };
 
     const [data, total] = await Promise.all([

@@ -50,6 +50,7 @@ export async function getSensorHistory(
   metric: 'temperature' | 'humidity',
   range: string,
 ) {
+  const now = new Date();
   const from = getRangeStart(range);
   const bucket =
     range === '24h'
@@ -75,6 +76,9 @@ export async function getSensorHistory(
       ROUND(MAX(${column})::numeric, 1) AS max
     FROM "SensorReading"
     WHERE "createdAt" >= ${from}
+      AND "createdAt" <= ${now}
+      AND "temperature" BETWEEN 10 AND 60
+      AND "humidity" BETWEEN 10 AND 100
     GROUP BY 1
     ORDER BY 1 ASC
   `);

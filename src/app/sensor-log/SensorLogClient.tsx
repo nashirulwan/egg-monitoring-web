@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Thermometer, Droplets, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 
+const REFRESH_INTERVAL_MS = 5000;
+
 interface SensorReading {
     id: string;
     temperature: number;
@@ -46,11 +48,27 @@ export default function SensorLogPage() {
         return () => window.clearTimeout(timeout);
     }, [fetchData]);
 
+    useEffect(() => {
+        if (pagination.page !== 1) return undefined;
+
+        const interval = window.setInterval(() => {
+            void fetchData(1);
+        }, REFRESH_INTERVAL_MS);
+
+        return () => window.clearInterval(interval);
+    }, [fetchData, pagination.page]);
+
     const tempColor = (t: number) => {
-        if (t < 36) return 'var(--danger)';
-        if (t > 39) return 'var(--danger)';
-        if (t >= 37 && t <= 38) return 'var(--success)';
-        return 'var(--warning)';
+        if (t > 32) return 'var(--danger)';
+        if (t > 28 || t < 24) return 'var(--warning)';
+        return 'var(--success)';
+    };
+
+    const tempStatus = (t: number) => {
+        if (t > 32) return { label: 'Panas', tone: 'danger' };
+        if (t > 28) return { label: 'Kipas ON', tone: 'warning' };
+        if (t < 24) return { label: 'Dingin', tone: 'warning' };
+        return { label: 'Normal', tone: 'success' };
     };
 
     return (
@@ -58,7 +76,7 @@ export default function SensorLogPage() {
             <div className="page-header">
                 <div className="page-title">
                     <h2>Sensor Log</h2>
-                    <p>Riwayat data sensor DHT11 — suhu dan kelembapan</p>
+                    <p>Riwayat data sensor DHT22, gas, suhu, dan kelembapan</p>
                 </div>
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                     <input
@@ -111,7 +129,10 @@ export default function SensorLogPage() {
                                 </td>
                             </tr>
                         ) : (
-                            readings.map((r) => (
+                            readings.map((r) => {
+                                const status = tempStatus(r.temperature);
+
+                                return (
                                 <tr key={r.id} style={{ transition: 'background 0.15s' }} onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg)')} onMouseLeave={(e) => (e.currentTarget.style.background = '')}>
                                     <td style={tdStyle}>
                                         {new Date(r.createdAt).toLocaleString('id-ID', {
@@ -137,12 +158,13 @@ export default function SensorLogPage() {
                                         </span>
                                     </td>
                                     <td style={tdStyle}>
-                                        <span className={`badge ${r.temperature >= 37 && r.temperature <= 38 ? 'success' : r.temperature < 36 || r.temperature > 39 ? 'danger' : 'warning'}`}>
-                                            {r.temperature >= 37 && r.temperature <= 38 ? 'Normal' : r.temperature < 36 || r.temperature > 39 ? 'Bahaya' : 'Perhatian'}
+                                        <span className={`badge ${status.tone}`}>
+                                            {status.label}
                                         </span>
                                     </td>
                                 </tr>
-                            ))
+                                );
+                            })
                         )}
                     </tbody>
                 </table>

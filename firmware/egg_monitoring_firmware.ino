@@ -23,9 +23,9 @@
 #include <NTPClient.h>
 #include <WiFiUdp.h>
 
-const char* WIFI_SSID     = "x2";
-const char* WIFI_PASSWORD = "qwertyui";
-const char* SERVER_URL    = "https://egg.nashiru.me";
+const char* WIFI_SSID     = "YOUR_WIFI_SSID";
+const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
+const char* SERVER_URL    = "https://your-domain.com";
 const char* DEVICE_ID     = "esp32-01";
 
 const unsigned long SENSOR_INTERVAL = 10000;
@@ -47,8 +47,8 @@ const float MAX_VALID_HUMIDITY = 100.0;
 #define EGG_SENSOR_3_PIN 21
 #define EGG_SENSOR_4_PIN 22
 
-#define GAS_SENSOR_PIN 5
-#define GAS_DETECTED_LEVEL LOW
+#define GAS_SENSOR_PIN 34
+#define GAS_THRESHOLD 1800
 
 #define RELAY_FAN_1_PIN 16
 #define RELAY_FAN_2_PIN 17
@@ -170,9 +170,8 @@ int sendGet(const char* endpoint, String& response) {
 void sendSensorData() {
   float temp = dht.readTemperature();
   float hum = dht.readHumidity();
-  int gasSignal = digitalRead(GAS_SENSOR_PIN);
-  bool gasDetected = gasSignal == GAS_DETECTED_LEVEL;
-  int gasValue = gasDetected ? 1000 : 0;
+  int gasValue = analogRead(GAS_SENSOR_PIN);
+  bool gasDetected = gasValue >= GAS_THRESHOLD;
 
   if (isnan(temp) || isnan(hum)) {
     Serial.println("  DHT22 read FAILED, skipping sensor report");
@@ -284,7 +283,8 @@ void setup() {
   pinMode(EGG_SENSOR_2_PIN, INPUT_PULLUP);
   pinMode(EGG_SENSOR_3_PIN, INPUT_PULLUP);
   pinMode(EGG_SENSOR_4_PIN, INPUT_PULLUP);
-  pinMode(GAS_SENSOR_PIN, INPUT_PULLUP);
+  analogReadResolution(12);
+  pinMode(GAS_SENSOR_PIN, INPUT);
 
   attachInterrupt(digitalPinToInterrupt(EGG_SENSOR_1_PIN), eggSensor1Interrupt, FALLING);
   attachInterrupt(digitalPinToInterrupt(EGG_SENSOR_2_PIN), eggSensor2Interrupt, FALLING);

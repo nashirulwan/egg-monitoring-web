@@ -9,10 +9,20 @@ export async function GET() {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
     const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const validSensorReading = {
+      temperature: { gte: 10, lte: 60 },
+      humidity: { gte: 10, lte: 100 },
+    };
 
     const [latestReading, latestGas, lastUnsafeGas, todayStats, avgResult, lastHeartbeat, recentEggs, totalEggsResult] =
       await Promise.all([
-        db.sensorReading.findFirst({ where: { createdAt: { lte: now } }, orderBy: { createdAt: 'desc' } }),
+        db.sensorReading.findFirst({
+          where: {
+            createdAt: { lte: now },
+            ...validSensorReading,
+          },
+          orderBy: { createdAt: 'desc' },
+        }),
         db.gasReading.findFirst({ where: { createdAt: { lte: now } }, orderBy: { createdAt: 'desc' } }),
         db.gasReading.findFirst({
           where: {
@@ -33,7 +43,10 @@ export async function GET() {
           _avg: { temperature: true, humidity: true },
           _min: { temperature: true },
           _max: { temperature: true },
-          where: { createdAt: { gte: dayAgo } },
+          where: {
+            createdAt: { gte: dayAgo, lte: now },
+            ...validSensorReading,
+          },
         }),
         db.deviceHeartbeat.findFirst({ where: { createdAt: { lte: now } }, orderBy: { createdAt: 'desc' } }),
         db.eggEvent.findMany({
