@@ -61,22 +61,26 @@ export async function GET() {
         getOfflineTimeoutMs(),
       ]);
 
+    const isLatestReadingFresh = latestReading
+      ? now.getTime() - new Date(latestReading.createdAt).getTime() < offlineTimeoutMs
+      : false;
     const isOnline = lastHeartbeat
       ? now.getTime() - new Date(lastHeartbeat.createdAt).getTime() < offlineTimeoutMs
       : false;
+    const liveReading = isLatestReadingFresh ? latestReading : null;
 
     return NextResponse.json({
-      temperature: latestReading?.temperature ?? null,
-      humidity: latestReading?.humidity ?? null,
+      temperature: liveReading?.temperature ?? null,
+      humidity: liveReading?.humidity ?? null,
       avgTemp24h: avgResult._avg.temperature ?? null,
       avgHumidity24h: avgResult._avg.humidity ?? null,
       minTemp24h: avgResult._min.temperature ?? null,
       maxTemp24h: avgResult._max.temperature ?? null,
       eggsToday: todayStats?.eggCount ?? 0,
       eggsTotal: totalEggsResult._sum.count ?? 0,
-      gasDetected: latestReading?.gasDetected ?? latestGas?.gasDetected ?? false,
-      gasValue: latestReading?.gasValue ?? latestGas?.analogValue ?? null,
-      lastGasReading: latestReading?.gasValue != null ? latestReading.createdAt : latestGas?.createdAt ?? null,
+      gasDetected: liveReading?.gasDetected ?? false,
+      gasValue: liveReading?.gasValue ?? null,
+      lastGasReading: liveReading?.gasValue != null ? liveReading.createdAt : latestGas?.createdAt ?? null,
       lastUnsafeGasAt: lastUnsafeGas?.createdAt ?? null,
       isOnline,
       lastHeartbeat: lastHeartbeat?.createdAt ?? null,

@@ -7,6 +7,7 @@ import ActuatorControls from '@/components/dashboard/ActuatorControls';
 import DeviceStatus from '@/components/dashboard/DeviceStatus';
 import EggMonitor from '@/components/dashboard/EggMonitor';
 import DashboardClock from '@/components/dashboard/DashboardClock';
+import { getOfflineTimeoutMs } from '@/lib/server';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -22,7 +23,11 @@ type DeviceWithStatus = Device & {
 async function getDashboardData() {
   const now = new Date();
   const latest = await db.sensorReading.findFirst({
-    where: { createdAt: { lte: now } },
+    where: {
+      createdAt: { lte: now },
+      temperature: { gte: 10, lte: 60 },
+      humidity: { gte: 10, lte: 100 },
+    },
     orderBy: { createdAt: 'desc' },
   });
 
@@ -47,7 +52,9 @@ async function getDashboardData() {
       humidity: true,
     },
     where: {
-      createdAt: { gte: dayAgo },
+      createdAt: { gte: dayAgo, lte: now },
+      temperature: { gte: 10, lte: 60 },
+      humidity: { gte: 10, lte: 100 },
     },
   });
 
@@ -85,8 +92,12 @@ async function getDashboardData() {
     orderBy: { createdAt: 'desc' },
   });
 
+  const offlineTimeoutMs = await getOfflineTimeoutMs();
+  const liveReading = latest && now.getTime() - new Date(latest.createdAt).getTime() < offlineTimeoutMs
+    ? latest
+    : null;
   const isOnline = lastHB
-    ? now.getTime() - new Date(lastHB.createdAt).getTime() < 2 * 60 * 1000
+    ? now.getTime() - new Date(lastHB.createdAt).getTime() < offlineTimeoutMs
     : false;
 
   const allDevices = await db.device.findMany({
@@ -103,7 +114,7 @@ async function getDashboardData() {
     const hb = d.heartbeats[0];
     return {
       ...d,
-      isOnline: hb ? now.getTime() - new Date(hb.createdAt).getTime() < 120000 : false,
+      isOnline: hb ? now.getTime() - new Date(hb.createdAt).getTime() < offlineTimeoutMs : false,
       lastSeen: hb?.createdAt.toISOString() ?? null,
       rssi: hb?.rssi ?? null,
       freeHeap: hb?.freeHeap ?? null,
@@ -114,14 +125,14 @@ async function getDashboardData() {
   const allActuators: Actuator[] = await db.actuator.findMany();
 
   return {
-    temperature: latest?.temperature ?? null,
-    humidity: latest?.humidity ?? null,
+    temperature: liveReading?.temperature ?? null,
+    humidity: liveReading?.humidity ?? null,
     avgTemp24h: avgResult._avg.temperature ? parseFloat(avgResult._avg.temperature.toFixed(1)) : null,
     avgHumidity24h: avgResult._avg.humidity ? parseFloat(avgResult._avg.humidity.toFixed(1)) : null,
     eggsToday: todayStat?.eggCount ?? 0,
     eggsTotal: totalEggs._sum.count ?? 0,
-    gasDetected: latest?.gasDetected ?? latestGas?.gasDetected ?? false,
-    gasValue: latest?.gasValue ?? latestGas?.analogValue ?? null,
+    gasDetected: liveReading?.gasDetected ?? false,
+    gasValue: liveReading?.gasValue ?? null,
     lastGasReading: latestGas?.createdAt ?? null,
     lastUnsafeGasAt: lastUnsafeGas?.createdAt.toISOString() ?? null,
     recentEggs,
