@@ -35,9 +35,10 @@ const defaultSettings: SettingsSection[] = [
         items: [
             { label: "Timeout Offline", description: "Perangkat dianggap offline setelah tidak ada heartbeat", type: "number", value: 2, unit: "menit", key: "offline_timeout" },
             { label: "Mode Aktuator", description: "Manual dari dashboard, Auto kembali ke logika sensor ESP32", type: "info", value: "Dashboard" },
-            { label: "Kipas 1 & 2", description: "Mode Auto menyalakan kedua kipas saat suhu lebih dari 28°C", type: "info", value: "> 28°C" },
-            { label: "Lampu", description: "Mode Auto menyalakan lampu saat suhu kurang dari 28°C", type: "info", value: "< 28°C" },
-            { label: "Conveyor", description: "Mode Auto menyalakan conveyor saat nilai gas tidak aman", type: "info", value: "Gas >= 1800" },
+            { label: "Batas Kipas ON", description: "Mode Auto menyalakan kipas 1 & 2 saat suhu lebih dari angka ini", type: "number", value: 28, unit: "°C", key: "fan_on_temp" },
+            { label: "Batas Lampu ON", description: "Mode Auto menyalakan lampu saat suhu kurang dari angka ini", type: "number", value: 28, unit: "°C", key: "lamp_on_temp" },
+            { label: "Batas Gas Tidak Aman", description: "Mode Auto menyalakan conveyor saat ADC gas sama/lebih dari angka ini", type: "number", value: 1800, unit: "ADC", key: "gas_threshold" },
+            { label: "Delay Manual Aktuator", description: "Seberapa cepat ESP32 membaca tombol manual dari dashboard", type: "number", value: 1000, unit: "ms", key: "actuator_poll_ms" },
         ],
     },
     {
@@ -175,7 +176,7 @@ export default function PengaturanClient({ initialSettings }: { initialSettings?
                                                         value={item.value as number}
                                                         onChange={(e) => updateSetting(si, ii, Number(e.target.value))}
                                                         style={{
-                                                            width: 70, padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)",
+                                                            width: 86, padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)",
                                                             fontSize: 13, textAlign: "right", background: "var(--bg)", color: "var(--text-primary)",
                                                             fontWeight: 600, outline: "none",
                                                         }}

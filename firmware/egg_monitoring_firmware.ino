@@ -31,10 +31,9 @@ const char* DEVICE_ID     = "esp32-01";
 const unsigned long SENSOR_INTERVAL = 10000;
 const unsigned long HEARTBEAT_INTERVAL = 30000;
 const unsigned long EGG_SEND_INTERVAL = 60000;
-const unsigned long ACTUATOR_POLL_INTERVAL = 3000;
+const unsigned long SETTINGS_POLL_INTERVAL = 5000;
+const unsigned long DEFAULT_ACTUATOR_POLL_INTERVAL = 1000;
 const unsigned long HTTP_TIMEOUT = 10000;
-const float FAN_ON_TEMP = 28.0;
-const float LAMP_ON_TEMP = 28.0;
 const float MIN_VALID_TEMP = 10.0;
 const float MAX_VALID_TEMP = 60.0;
 const float MIN_VALID_HUMIDITY = 10.0;
@@ -49,7 +48,6 @@ const float MAX_VALID_HUMIDITY = 100.0;
 #define EGG_SENSOR_4_PIN 22
 
 #define GAS_SENSOR_PIN 34
-#define GAS_THRESHOLD 1800
 
 #define RELAY_FAN_1_PIN 16
 #define RELAY_FAN_2_PIN 17
@@ -75,6 +73,12 @@ unsigned long lastEggSendTime = 0;
 unsigned long lastIrPollTime = 0;
 unsigned long lastIrDebugTime = 0;
 unsigned long lastActuatorPollTime = 0;
+unsigned long lastSettingsPollTime = 0;
+
+float fanOnTemp = 28.0;
+float lampOnTemp = 28.0;
+int gasThreshold = 1800;
+unsigned long actuatorPollInterval = DEFAULT_ACTUATOR_POLL_INTERVAL;
 
 bool autoFan1On = false;
 bool autoFan2On = false;
@@ -212,6 +216,45 @@ int sendGet(const String& endpoint, String& response) {
   return httpCode;
 }
 
+float readFloatSetting(JsonVariant value, float currentValue) {
+  if (value.isNull()) return currentValue;
+  if (value.is<const char*>()) return atof(value.as<const char*>());
+  return value.as<float>();
+}
+
+int readIntSetting(JsonVariant value, int currentValue) {
+  if (value.isNull()) return currentValue;
+  if (value.is<const char*>()) return atoi(value.as<const char*>());
+  return value.as<int>();
+}
+
+unsigned long readUnsignedLongSetting(JsonVariant value, unsigned long currentValue) {
+  if (value.isNull()) return currentValue;
+  if (value.is<const char*>()) return strtoul(value.as<const char*>(), nullptr, 10);
+  return value.as<unsigned long>();
+}
+
+void syncSettings() {
+  String response;
+  int httpCode = sendGet("/api/settings", response);
+  if (httpCode < 200 || httpCode >= 300) return;
+
+  StaticJsonDocument<768> doc;
+  DeserializationError error = deserializeJson(doc, response);
+  if (error) {
+    Serial.printf("  Settings sync JSON failed: %s\n", error.c_str());
+    return;
+  }
+
+  fanOnTemp = constrain(readFloatSetting(doc["fan_on_temp"], fanOnTemp), MIN_VALID_TEMP, MAX_VALID_TEMP);
+  lampOnTemp = constrain(readFloatSetting(doc["lamp_on_temp"], lampOnTemp), MIN_VALID_TEMP, MAX_VALID_TEMP);
+  gasThreshold = constrain(readIntSetting(doc["gas_threshold"], gasThreshold), 0, 4095);
+  actuatorPollInterval = constrain(readUnsignedLongSetting(doc["actuator_poll_ms"], actuatorPollInterval), 500UL, 10000UL);
+
+  Serial.printf("  Settings -> fan > %.1f C, lamp < %.1f C, gas >= %d, actuator poll: %lums\n",
+                fanOnTemp, lampOnTemp, gasThreshold, actuatorPollInterval);
+}
+
 void applyRelayStates() {
   bool fan1On = manualFan1Override ? manualFan1State : autoFan1On;
   bool fan2On = manualFan2Override ? manualFan2State : autoFan2On;
@@ -284,7 +327,7 @@ void sendSensorData() {
   float temp = dht.readTemperature();
   float hum = dht.readHumidity();
   int gasValue = analogRead(GAS_SENSOR_PIN);
-  bool gasDetected = gasValue >= GAS_THRESHOLD;
+  bool gasDetected = gasValue >= gasThreshold;
 
   if (isnan(temp) || isnan(hum)) {
     Serial.println("  DHT22 read FAILED, skipping sensor report");
@@ -296,9 +339,9 @@ void sendSensorData() {
     return;
   }
 
-  autoFan1On = temp > FAN_ON_TEMP;
-  autoFan2On = temp > FAN_ON_TEMP;
-  autoLampOn = temp < LAMP_ON_TEMP;
+  autoFan1On = temp > fanOnTemp;
+  autoFan2On = temp > fanOnTemp;
+  autoLampOn = temp < lampOnTemp;
   autoConveyorOn = gasDetected;
   applyRelayStates();
 
@@ -404,12 +447,14 @@ void setup() {
   timeClient.begin();
   timeClient.update();
 
+  syncSettings();
   sendHeartbeat();
   sendSensorData();
   syncActuators();
   lastHeartbeatTime = millis();
   lastSensorTime = millis();
   lastActuatorPollTime = millis();
+  lastSettingsPollTime = millis();
 
   Serial.println("Setup complete. Starting main loop...");
   Serial.println("========================================");
@@ -440,7 +485,12 @@ void loop() {
     sendHeartbeat();
   }
 
-  if (now - lastActuatorPollTime >= ACTUATOR_POLL_INTERVAL) {
+  if (now - lastSettingsPollTime >= SETTINGS_POLL_INTERVAL) {
+    lastSettingsPollTime = now;
+    syncSettings();
+  }
+
+  if (now - lastActuatorPollTime >= actuatorPollInterval) {
     lastActuatorPollTime = now;
     syncActuators();
   }
