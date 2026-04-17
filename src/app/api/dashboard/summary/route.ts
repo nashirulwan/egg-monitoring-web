@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { getOfflineTimeoutMs } from '@/lib/server';
 
 export async function GET() {
   try {
@@ -14,7 +15,7 @@ export async function GET() {
       humidity: { gte: 10, lte: 100 },
     };
 
-    const [latestReading, latestGas, lastUnsafeGas, todayStats, avgResult, lastHeartbeat, recentEggs, totalEggsResult] =
+    const [latestReading, latestGas, lastUnsafeGas, todayStats, avgResult, lastHeartbeat, recentEggs, totalEggsResult, offlineTimeoutMs] =
       await Promise.all([
         db.sensorReading.findFirst({
           where: {
@@ -57,10 +58,11 @@ export async function GET() {
         db.eggEvent.aggregate({
           _sum: { count: true },
         }),
+        getOfflineTimeoutMs(),
       ]);
 
     const isOnline = lastHeartbeat
-      ? now.getTime() - new Date(lastHeartbeat.createdAt).getTime() < 2 * 60 * 1000
+      ? now.getTime() - new Date(lastHeartbeat.createdAt).getTime() < offlineTimeoutMs
       : false;
 
     return NextResponse.json({

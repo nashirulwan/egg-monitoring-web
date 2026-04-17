@@ -21,25 +21,37 @@ export function getRangeStart(range: string) {
   }
 }
 
+export async function getOfflineTimeoutMs() {
+  const setting = await db.setting.findUnique({
+    where: { key: 'offline_timeout' },
+  });
+  const minutes = Number(setting?.value ?? 2);
+  const safeMinutes = Number.isFinite(minutes) && minutes > 0 ? minutes : 2;
+  return safeMinutes * 60 * 1000;
+}
+
 export async function getDeviceStatuses() {
   const now = new Date();
-  const devices = await db.device.findMany({
-    include: {
-      heartbeats: {
-        where: { createdAt: { lte: now } },
-        orderBy: { createdAt: 'desc' },
-        take: 1,
+  const [devices, offlineTimeoutMs] = await Promise.all([
+    db.device.findMany({
+      include: {
+        heartbeats: {
+          where: { createdAt: { lte: now } },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
       },
-    },
-    orderBy: { createdAt: 'asc' },
-  });
+      orderBy: { createdAt: 'asc' },
+    }),
+    getOfflineTimeoutMs(),
+  ]);
 
   return devices.map((device) => {
     const heartbeat = device.heartbeats[0] ?? null;
     return {
       ...device,
       isOnline: heartbeat
-        ? now.getTime() - new Date(heartbeat.createdAt).getTime() < 2 * 60 * 1000
+        ? now.getTime() - new Date(heartbeat.createdAt).getTime() < offlineTimeoutMs
         : false,
       lastSeen: heartbeat?.createdAt ?? null,
       rssi: heartbeat?.rssi ?? null,

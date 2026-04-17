@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 
+const allowedSettingKeys = new Set(["offline_timeout"]);
+
 export async function GET() {
   try {
-    const settings = await db.setting.findMany();
+    const settings = await db.setting.findMany({
+      where: { key: { in: Array.from(allowedSettingKeys) } },
+    });
     const settingsMap: Record<string, string> = {};
     for (const s of settings) {
       settingsMap[s.key] = s.value;
@@ -17,7 +21,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const entries = Object.entries(body);
+    const entries = Object.entries(body).filter(([key]) => allowedSettingKeys.has(key));
 
     await db.$transaction(
       entries.map(([key, value]) =>

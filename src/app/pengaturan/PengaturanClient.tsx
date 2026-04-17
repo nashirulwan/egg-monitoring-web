@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Database, Cpu, Thermometer, Shield, RefreshCcw } from "lucide-react";
+import { Database, Cpu, Thermometer, RefreshCcw } from "lucide-react";
 
 interface SettingsSection {
     title: string;
@@ -23,20 +23,21 @@ const defaultSettings: SettingsSection[] = [
         title: "Sensor & Monitoring",
         icon: Thermometer,
         items: [
-            { label: "Interval Pembacaan Sensor", description: "Seberapa sering sensor DHT11 mengirim data", type: "number", value: 10, unit: "menit", key: "sensor_interval" },
-            { label: "Batas Suhu Atas", description: "Alert jika suhu melebihi nilai ini", type: "number", value: 39, unit: "°C", key: "temp_upper" },
-            { label: "Batas Suhu Bawah", description: "Alert jika suhu di bawah nilai ini", type: "number", value: 36, unit: "°C", key: "temp_lower" },
-            { label: "Target Kelembapan", description: "Kelembapan ideal kandang", type: "number", value: 55, unit: "%", key: "humidity_target" },
+            { label: "Interval Pembacaan Sensor", description: "Suhu, kelembapan, dan gas dikirim ESP32 setiap 10 detik", type: "info", value: "10 detik" },
+            { label: "DHT22", description: "Suhu dan kelembapan dikirim ESP32 setiap 10 detik", type: "info", value: "GPIO4" },
+            { label: "Sensor Gas", description: "Nilai analog gas ikut masuk ke dashboard dan sensor log", type: "info", value: "GPIO34" },
+            { label: "Sensor Telur", description: "A001, A002, B001, B002 dihitung per sensor IR", type: "info", value: "18 / 19 / 21 / 22" },
         ],
     },
     {
         title: "Perangkat IoT",
         icon: Cpu,
         items: [
-            { label: "Heartbeat Interval", description: "Interval heartbeat ESP32 ke server", type: "number", value: 30, unit: "detik", key: "heartbeat_interval" },
             { label: "Timeout Offline", description: "Perangkat dianggap offline setelah tidak ada heartbeat", type: "number", value: 2, unit: "menit", key: "offline_timeout" },
-            { label: "Auto-restart Fan", description: "Otomatis nyalakan kipas saat suhu > batas atas", type: "toggle", value: true, key: "auto_fan" },
-            { label: "Auto Conveyor Gas", description: "Otomatis nyalakan conveyor saat gas tidak aman", type: "toggle", value: true, key: "auto_conveyor_gas" },
+            { label: "Mode Aktuator", description: "Manual dari dashboard, Auto kembali ke logika sensor ESP32", type: "info", value: "Dashboard" },
+            { label: "Kipas 1 & 2", description: "Mode Auto menyalakan kedua kipas saat suhu lebih dari 28°C", type: "info", value: "> 28°C" },
+            { label: "Lampu", description: "Mode Auto menyalakan lampu saat suhu kurang dari 28°C", type: "info", value: "< 28°C" },
+            { label: "Conveyor", description: "Mode Auto menyalakan conveyor saat nilai gas tidak aman", type: "info", value: "Gas >= 1800" },
         ],
     },
     {
@@ -44,16 +45,8 @@ const defaultSettings: SettingsSection[] = [
         icon: Database,
         items: [
             { label: "Database Driver", description: "ORM dan driver yang digunakan", type: "info", value: "Prisma ORM + PostgreSQL" },
-            { label: "Lokasi Database", description: "Path file database", type: "info", value: "eggmonitoring (PostgreSQL)" },
-            { label: "Retensi Data Sensor", description: "Berapa lama data sensor disimpan", type: "number", value: 90, unit: "hari", key: "data_retention" },
-        ],
-    },
-    {
-        title: "Jaringan & Keamanan",
-        icon: Shield,
-        items: [
-            { label: "API Key IoT", description: "API key untuk autentikasi perangkat IoT", type: "text", value: "belum dikonfigurasi", key: "iot_api_key" },
-            { label: "CORS Allowed Origins", description: "Domain yang diizinkan mengakses API", type: "text", value: "*", key: "cors_origins" },
+            { label: "Database", description: "Data sensor, telur, gas, heartbeat, dan aktuator", type: "info", value: "eggmonitoring" },
+            { label: "Riwayat", description: "Data dipakai untuk dashboard, grafik, sensor log, dan riwayat telur", type: "info", value: "Aktif" },
         ],
     },
 ];
@@ -134,7 +127,7 @@ export default function PengaturanClient({ initialSettings }: { initialSettings?
             <div className="page-header">
                 <div className="page-title">
                     <h2>Pengaturan</h2>
-                    <p>Konfigurasi sistem monitoring</p>
+                    <p>Konfigurasi yang dipakai sistem monitoring</p>
                 </div>
                 <button onClick={handleSave} disabled={saving} style={{
                     padding: "8px 20px", borderRadius: 8, fontWeight: 600, fontSize: 13,
@@ -162,13 +155,14 @@ export default function PengaturanClient({ initialSettings }: { initialSettings?
                                 {section.items.map((item, ii) => (
                                     <div key={ii} style={{
                                         display: "flex", justifyContent: "space-between", alignItems: "center",
+                                        gap: 14, flexWrap: "wrap",
                                         padding: "14px 0", borderBottom: ii < section.items.length - 1 ? "1px solid var(--border-light)" : "none",
                                     }}>
-                                        <div style={{ flex: 1 }}>
+                                        <div style={{ flex: "1 1 260px", minWidth: 0 }}>
                                             <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>{item.label}</div>
                                             <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{item.description}</div>
                                         </div>
-                                        <div style={{ flexShrink: 0, marginLeft: 20 }}>
+                                        <div style={{ flex: "0 0 auto", minWidth: item.type === "info" ? 120 : "auto", display: "flex", justifyContent: "flex-end" }}>
                                             {item.type === "toggle" ? (
                                                 <label className="toggle-switch">
                                                     <input type="checkbox" checked={item.value as boolean} onChange={(e) => updateSetting(si, ii, e.target.checked)} />
@@ -199,7 +193,7 @@ export default function PengaturanClient({ initialSettings }: { initialSettings?
                                                     }}
                                                 />
                                             ) : (
-                                                <span style={{ fontSize: 13, color: "var(--text-muted)", fontWeight: 500 }}>{String(item.value)}</span>
+                                                <span style={{ fontSize: 13, color: "var(--text-muted)", fontWeight: 600, textAlign: "right" }}>{String(item.value)}</span>
                                             )}
                                         </div>
                                     </div>
