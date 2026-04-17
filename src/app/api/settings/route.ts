@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 
 const defaultSettingValues: Record<string, string> = {
   offline_timeout: "2",
+  sensor_interval_ms: "10000",
   fan_on_temp: "28",
   lamp_on_temp: "28",
   gas_threshold: "1800",
@@ -18,6 +19,8 @@ function sanitizeSetting(key: string, value: unknown) {
   switch (key) {
     case "offline_timeout":
       return String(Math.min(Math.max(num, 1), 60));
+    case "sensor_interval_ms":
+      return String(Math.round(Math.min(Math.max(num, 1000), 60000)));
     case "fan_on_temp":
     case "lamp_on_temp":
       return String(Math.min(Math.max(num, 10), 60));

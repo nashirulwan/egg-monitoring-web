@@ -23,8 +23,8 @@ const defaultSettings: SettingsSection[] = [
         title: "Sensor & Monitoring",
         icon: Thermometer,
         items: [
-            { label: "Interval Pembacaan Sensor", description: "Suhu, kelembapan, dan gas dikirim ESP32 setiap 10 detik", type: "info", value: "10 detik" },
-            { label: "DHT22", description: "Suhu dan kelembapan dikirim ESP32 setiap 10 detik", type: "info", value: "GPIO4" },
+            { label: "Interval Pembacaan Sensor", description: "Seberapa sering ESP32 mengirim suhu, kelembapan, dan gas", type: "number", value: 10000, unit: "ms", key: "sensor_interval_ms" },
+            { label: "DHT22", description: "Sensor suhu dan kelembapan", type: "info", value: "GPIO4" },
             { label: "Sensor Gas", description: "Nilai analog gas ikut masuk ke dashboard dan sensor log", type: "info", value: "GPIO34" },
             { label: "Sensor Telur", description: "A001, A002, B001, B002 dihitung per sensor IR", type: "info", value: "18 / 19 / 21 / 22" },
         ],

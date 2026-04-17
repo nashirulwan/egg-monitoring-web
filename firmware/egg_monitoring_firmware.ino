@@ -28,7 +28,7 @@ const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
 const char* SERVER_URL    = "https://your-domain.com";
 const char* DEVICE_ID     = "esp32-01";
 
-const unsigned long SENSOR_INTERVAL = 10000;
+const unsigned long DEFAULT_SENSOR_INTERVAL = 10000;
 const unsigned long HEARTBEAT_INTERVAL = 30000;
 const unsigned long EGG_SEND_INTERVAL = 60000;
 const unsigned long SETTINGS_POLL_INTERVAL = 5000;
@@ -75,6 +75,7 @@ unsigned long lastIrDebugTime = 0;
 unsigned long lastActuatorPollTime = 0;
 unsigned long lastSettingsPollTime = 0;
 
+unsigned long sensorInterval = DEFAULT_SENSOR_INTERVAL;
 float fanOnTemp = 28.0;
 float lampOnTemp = 28.0;
 int gasThreshold = 1800;
@@ -249,10 +250,11 @@ void syncSettings() {
   fanOnTemp = constrain(readFloatSetting(doc["fan_on_temp"], fanOnTemp), MIN_VALID_TEMP, MAX_VALID_TEMP);
   lampOnTemp = constrain(readFloatSetting(doc["lamp_on_temp"], lampOnTemp), MIN_VALID_TEMP, MAX_VALID_TEMP);
   gasThreshold = constrain(readIntSetting(doc["gas_threshold"], gasThreshold), 0, 4095);
+  sensorInterval = constrain(readUnsignedLongSetting(doc["sensor_interval_ms"], sensorInterval), 1000UL, 60000UL);
   actuatorPollInterval = constrain(readUnsignedLongSetting(doc["actuator_poll_ms"], actuatorPollInterval), 500UL, 10000UL);
 
-  Serial.printf("  Settings -> fan > %.1f C, lamp < %.1f C, gas >= %d, actuator poll: %lums\n",
-                fanOnTemp, lampOnTemp, gasThreshold, actuatorPollInterval);
+  Serial.printf("  Settings -> sensor: %lums, fan > %.1f C, lamp < %.1f C, gas >= %d, actuator poll: %lums\n",
+                sensorInterval, fanOnTemp, lampOnTemp, gasThreshold, actuatorPollInterval);
 }
 
 void applyRelayStates() {
@@ -475,7 +477,7 @@ void loop() {
     pollEggSensors();
   }
 
-  if (now - lastSensorTime >= SENSOR_INTERVAL) {
+  if (now - lastSensorTime >= sensorInterval) {
     lastSensorTime = now;
     sendSensorData();
   }
