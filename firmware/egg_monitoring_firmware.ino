@@ -31,6 +31,7 @@ const char* DEVICE_ID     = "esp32-01";
 const unsigned long SENSOR_INTERVAL = 10000;
 const unsigned long HEARTBEAT_INTERVAL = 30000;
 const unsigned long EGG_SEND_INTERVAL = 60000;
+const unsigned long ACTUATOR_POLL_INTERVAL = 3000;
 const unsigned long HTTP_TIMEOUT = 10000;
 const float FAN_ON_TEMP = 28.0;
 const float LAMP_ON_TEMP = 28.0;
@@ -73,6 +74,22 @@ unsigned long lastHeartbeatTime = 0;
 unsigned long lastEggSendTime = 0;
 unsigned long lastIrPollTime = 0;
 unsigned long lastIrDebugTime = 0;
+unsigned long lastActuatorPollTime = 0;
+
+bool autoFan1On = false;
+bool autoFan2On = false;
+bool autoLampOn = false;
+bool autoConveyorOn = false;
+
+bool manualFan1Override = false;
+bool manualFan2Override = false;
+bool manualLampOverride = false;
+bool manualConveyorOverride = false;
+
+bool manualFan1State = false;
+bool manualFan2State = false;
+bool manualLampState = false;
+bool manualConveyorState = false;
 
 void IRAM_ATTR handleEggSensor(int index) {
   unsigned long now = millis();
@@ -166,7 +183,7 @@ int sendPost(const char* endpoint, const char* jsonBody) {
   return httpCode;
 }
 
-int sendGet(const char* endpoint, String& response) {
+int sendGet(const String& endpoint, String& response) {
   if (WiFi.status() != WL_CONNECTED) {
     connectWiFi();
     return -1;
@@ -176,8 +193,8 @@ int sendGet(const char* endpoint, String& response) {
   WiFiClientSecure client;
   client.setInsecure();
 
-  if (!http.begin(client, String(SERVER_URL) + String(endpoint))) {
-    Serial.printf("  [GET %s] HTTP begin FAILED\n", endpoint);
+  if (!http.begin(client, String(SERVER_URL) + endpoint)) {
+    Serial.printf("  [GET %s] HTTP begin FAILED\n", endpoint.c_str());
     return -2;
   }
 
@@ -188,11 +205,79 @@ int sendGet(const char* endpoint, String& response) {
   if (httpCode > 0) {
     response = http.getString();
   } else {
-    Serial.printf("  [GET %s] HTTP Error: %s\n", endpoint, http.errorToString(httpCode).c_str());
+    Serial.printf("  [GET %s] HTTP Error: %s\n", endpoint.c_str(), http.errorToString(httpCode).c_str());
   }
 
   http.end();
   return httpCode;
+}
+
+void applyRelayStates() {
+  bool fan1On = manualFan1Override ? manualFan1State : autoFan1On;
+  bool fan2On = manualFan2Override ? manualFan2State : autoFan2On;
+  bool lampOn = manualLampOverride ? manualLampState : autoLampOn;
+  bool conveyorOn = manualConveyorOverride ? manualConveyorState : autoConveyorOn;
+
+  digitalWrite(RELAY_FAN_1_PIN, fan1On ? HIGH : LOW);
+  digitalWrite(RELAY_FAN_2_PIN, fan2On ? HIGH : LOW);
+  digitalWrite(RELAY_LAMP_PIN, lampOn ? HIGH : LOW);
+  digitalWrite(RELAY_CONVEYOR_PIN, conveyorOn ? HIGH : LOW);
+}
+
+void setManualActuatorState(int pin, bool state, bool manualOverride, const char* name, const char* type) {
+  String actuatorName = String(name);
+  actuatorName.toLowerCase();
+  String actuatorType = String(type);
+  actuatorType.toLowerCase();
+
+  if (pin == RELAY_FAN_1_PIN || (actuatorType == "fan" && actuatorName.indexOf("1") >= 0)) {
+    manualFan1State = state;
+    manualFan1Override = manualOverride;
+  } else if (pin == RELAY_FAN_2_PIN || (actuatorType == "fan" && actuatorName.indexOf("2") >= 0)) {
+    manualFan2State = state;
+    manualFan2Override = manualOverride;
+  } else if (pin == RELAY_LAMP_PIN || actuatorType == "lamp") {
+    manualLampState = state;
+    manualLampOverride = manualOverride;
+  } else if (pin == RELAY_CONVEYOR_PIN || actuatorType == "conveyor") {
+    manualConveyorState = state;
+    manualConveyorOverride = manualOverride;
+  }
+}
+
+void syncActuators() {
+  String response;
+  int httpCode = sendGet(String("/api/actuators?deviceId=") + DEVICE_ID, response);
+  if (httpCode < 200 || httpCode >= 300) return;
+
+  StaticJsonDocument<1536> doc;
+  DeserializationError error = deserializeJson(doc, response);
+  if (error) {
+    Serial.printf("  Actuator sync JSON failed: %s\n", error.c_str());
+    return;
+  }
+
+  manualFan1Override = false;
+  manualFan2Override = false;
+  manualLampOverride = false;
+  manualConveyorOverride = false;
+
+  JsonArray actuators = doc["actuators"].as<JsonArray>();
+  for (JsonObject actuator : actuators) {
+    int pin = actuator["pin"] | -1;
+    bool state = actuator["state"] | false;
+    bool manualOverride = actuator["manualOverride"] | false;
+    const char* name = actuator["name"] | "";
+    const char* type = actuator["type"] | "";
+    setManualActuatorState(pin, state, manualOverride, name, type);
+  }
+
+  applyRelayStates();
+  Serial.printf("  Actuator sync -> Fan1:%s%s Fan2:%s%s Lamp:%s%s Conveyor:%s%s\n",
+                (manualFan1Override ? manualFan1State : autoFan1On) ? "ON" : "OFF", manualFan1Override ? "(M)" : "(A)",
+                (manualFan2Override ? manualFan2State : autoFan2On) ? "ON" : "OFF", manualFan2Override ? "(M)" : "(A)",
+                (manualLampOverride ? manualLampState : autoLampOn) ? "ON" : "OFF", manualLampOverride ? "(M)" : "(A)",
+                (manualConveyorOverride ? manualConveyorState : autoConveyorOn) ? "ON" : "OFF", manualConveyorOverride ? "(M)" : "(A)");
 }
 
 void sendSensorData() {
@@ -211,14 +296,11 @@ void sendSensorData() {
     return;
   }
 
-  bool fansOn = temp > FAN_ON_TEMP;
-  bool lampOn = temp < LAMP_ON_TEMP;
-  bool conveyorOn = gasDetected;
-
-  digitalWrite(RELAY_FAN_1_PIN, fansOn ? HIGH : LOW);
-  digitalWrite(RELAY_FAN_2_PIN, fansOn ? HIGH : LOW);
-  digitalWrite(RELAY_LAMP_PIN, lampOn ? HIGH : LOW);
-  digitalWrite(RELAY_CONVEYOR_PIN, conveyorOn ? HIGH : LOW);
+  autoFan1On = temp > FAN_ON_TEMP;
+  autoFan2On = temp > FAN_ON_TEMP;
+  autoLampOn = temp < LAMP_ON_TEMP;
+  autoConveyorOn = gasDetected;
+  applyRelayStates();
 
   StaticJsonDocument<192> doc;
   doc["deviceId"] = DEVICE_ID;
@@ -233,10 +315,10 @@ void sendSensorData() {
   Serial.printf("  Sensor -> temp: %.1f C, hum: %.1f%%, gas: %d (%s)\n",
                 temp, hum, gasValue, gasDetected ? "DETECTED" : "safe");
   Serial.printf("  Auto -> Fan1:%s Fan2:%s Lamp:%s Conveyor:%s\n",
-                fansOn ? "ON" : "OFF",
-                fansOn ? "ON" : "OFF",
-                lampOn ? "ON" : "OFF",
-                conveyorOn ? "ON" : "OFF");
+                autoFan1On ? "ON" : "OFF",
+                autoFan2On ? "ON" : "OFF",
+                autoLampOn ? "ON" : "OFF",
+                autoConveyorOn ? "ON" : "OFF");
   sendPost("/api/iot/readings", jsonBuf);
 
   // /api/iot/readings already records gas and auto-enables conveyor when gasDetected is true.
@@ -324,8 +406,10 @@ void setup() {
 
   sendHeartbeat();
   sendSensorData();
+  syncActuators();
   lastHeartbeatTime = millis();
   lastSensorTime = millis();
+  lastActuatorPollTime = millis();
 
   Serial.println("Setup complete. Starting main loop...");
   Serial.println("========================================");
@@ -354,6 +438,11 @@ void loop() {
   if (now - lastHeartbeatTime >= HEARTBEAT_INTERVAL) {
     lastHeartbeatTime = now;
     sendHeartbeat();
+  }
+
+  if (now - lastActuatorPollTime >= ACTUATOR_POLL_INTERVAL) {
+    lastActuatorPollTime = now;
+    syncActuators();
   }
 
   if (now - lastEggSendTime >= EGG_SEND_INTERVAL) {

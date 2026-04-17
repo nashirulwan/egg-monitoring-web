@@ -99,6 +99,7 @@ model Actuator {
   type      String   // fan, lamp, conveyor
   pin       Int?
   state     Boolean  @default(false)
+  manualOverride Boolean @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

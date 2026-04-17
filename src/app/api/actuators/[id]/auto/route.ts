@@ -16,33 +16,28 @@ export async function POST(
       return NextResponse.json({ error: 'Actuator not found' }, { status: 404 });
     }
 
-    const newState = !actuator.state;
-
-    await db.actuator.update({
+    const updated = await db.actuator.update({
       where: { id: actuator.id },
-      data: {
-        state: newState,
-        manualOverride: true,
-      },
+      data: { manualOverride: false },
     });
 
     await db.actuatorLog.create({
       data: {
         actuatorId: actuator.id,
-        state: newState,
-        source: 'web',
+        state: updated.state,
+        source: 'web-auto',
       },
     });
 
     return NextResponse.json({
-      id: actuator.id,
-      name: actuator.name,
-      type: actuator.type,
-      state: newState,
-      manualOverride: true,
+      id: updated.id,
+      name: updated.name,
+      type: updated.type,
+      state: updated.state,
+      manualOverride: updated.manualOverride,
     });
   } catch (error) {
-    console.error('Actuator toggle error:', error);
+    console.error('Actuator auto mode error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
