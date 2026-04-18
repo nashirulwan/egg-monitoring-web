@@ -54,6 +54,8 @@ const float MAX_VALID_HUMIDITY = 100.0;
 #define RELAY_LAMP_PIN 23
 #define RELAY_CONVEYOR_PIN 27
 
+const bool RELAY_ACTIVE_LOW = true;
+
 DHT dht(DHT_PIN, DHT_TYPE);
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP, "pool.ntp.org", 7 * 3600, 60000);
@@ -257,16 +259,25 @@ void syncSettings() {
                 sensorInterval, fanOnTemp, lampOnTemp, gasThreshold, actuatorPollInterval);
 }
 
+int relayLevel(bool on) {
+  if (RELAY_ACTIVE_LOW) return on ? LOW : HIGH;
+  return on ? HIGH : LOW;
+}
+
+void writeRelay(int pin, bool on) {
+  digitalWrite(pin, relayLevel(on));
+}
+
 void applyRelayStates() {
   bool fan1On = manualFan1Override ? manualFan1State : autoFan1On;
   bool fan2On = manualFan2Override ? manualFan2State : autoFan2On;
   bool lampOn = manualLampOverride ? manualLampState : autoLampOn;
   bool conveyorOn = manualConveyorOverride ? manualConveyorState : autoConveyorOn;
 
-  digitalWrite(RELAY_FAN_1_PIN, fan1On ? HIGH : LOW);
-  digitalWrite(RELAY_FAN_2_PIN, fan2On ? HIGH : LOW);
-  digitalWrite(RELAY_LAMP_PIN, lampOn ? HIGH : LOW);
-  digitalWrite(RELAY_CONVEYOR_PIN, conveyorOn ? HIGH : LOW);
+  writeRelay(RELAY_FAN_1_PIN, fan1On);
+  writeRelay(RELAY_FAN_2_PIN, fan2On);
+  writeRelay(RELAY_LAMP_PIN, lampOn);
+  writeRelay(RELAY_CONVEYOR_PIN, conveyorOn);
 }
 
 void setManualActuatorState(int pin, bool state, bool manualOverride, const char* name, const char* type) {
@@ -429,10 +440,10 @@ void setup() {
   pinMode(RELAY_FAN_2_PIN, OUTPUT);
   pinMode(RELAY_LAMP_PIN, OUTPUT);
   pinMode(RELAY_CONVEYOR_PIN, OUTPUT);
-  digitalWrite(RELAY_FAN_1_PIN, LOW);
-  digitalWrite(RELAY_FAN_2_PIN, LOW);
-  digitalWrite(RELAY_LAMP_PIN, LOW);
-  digitalWrite(RELAY_CONVEYOR_PIN, LOW);
+  writeRelay(RELAY_FAN_1_PIN, false);
+  writeRelay(RELAY_FAN_2_PIN, false);
+  writeRelay(RELAY_LAMP_PIN, false);
+  writeRelay(RELAY_CONVEYOR_PIN, false);
 
   pinMode(EGG_SENSOR_1_PIN, INPUT_PULLUP);
   pinMode(EGG_SENSOR_2_PIN, INPUT_PULLUP);
