@@ -16,6 +16,8 @@ Optional MQTT comparison path:
 ESP32 + sensors --MQTT--> MQTT broker --> MQTT subscriber --> PostgreSQL / HTTP API
 ```
 
+For a laptop-only MQTT demo, see [docs/MQTT_DEMO.md](docs/MQTT_DEMO.md).
+
 The ESP32 reads sensors and pushes data to the server. The web dashboard displays real-time data and lets users control actuators remotely.
 
 ## Repo Structure
@@ -87,6 +89,12 @@ npm run mqtt:subscriber
 ```
 
 In bridge mode, MQTT messages are forwarded to the existing HTTP API. In database mode, messages are saved directly through Prisma and logged in `MqttMessageLog`.
+
+For demo testing without MQTT firmware on the ESP32, run a local Mosquitto broker, run the subscriber in bridge mode, then run:
+
+```bash
+MQTT_BROKER_URL=mqtt://127.0.0.1:1883 npm run mqtt:demo:publish
+```
 
 ### ESP32
 
