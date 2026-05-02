@@ -21,6 +21,7 @@ model Device {
   sensorReadings SensorReading[]
   gasReadings    GasReading[]
   eggEvents      EggEvent[]
+  aiPredictions  SensorAiPrediction[]
   actuators      Actuator[]
 }
 
@@ -76,6 +77,29 @@ model EggEvent {
 
   @@index([deviceId, createdAt])
   @@index([sensorId, createdAt])
+}
+
+model SensorAiPrediction {
+  id                  String   @id @default(cuid())
+  deviceId            String
+  sensorId            String
+  targetMonth         DateTime
+  predictedEggs7d     Float
+  predictedEggs30d    Float
+  predictedMonthlyEggs Float
+  predictedStatus     String
+  confidence          Float
+  afkirRiskScore      Float
+  anomalyScore        Float?
+  anomalyLabel        String?
+  modelVersion        String
+  featureSnapshot     Json?
+  generatedAt         DateTime @default(now())
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId, sensorId, generatedAt])
+  @@index([targetMonth, generatedAt])
 }
 
 model MqttMessageLog {

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Thermometer, Egg, Cpu, Bell, Settings } from 'lucide-react';
+import { LayoutDashboard, Thermometer, Egg, Cpu, Bell, Settings, Brain } from 'lucide-react';
 
 interface SidebarProps {
     isOnline: boolean;
@@ -15,6 +15,7 @@ const menuItems = [
             { href: '/', icon: LayoutDashboard, label: 'Dashboard' },
             { href: '/sensor-log', icon: Thermometer, label: 'Sensor Log' },
             { href: '/riwayat-telur', icon: Egg, label: 'Riwayat Telur' },
+            { href: '/prediksi-ai', icon: Brain, label: 'Prediksi AI' },
         ]
     },
     {

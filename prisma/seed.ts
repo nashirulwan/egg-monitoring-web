@@ -1,15 +1,28 @@
-import { Prisma, PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 
 const db = new PrismaClient();
 
 const deviceId = 'esp32-01';
 const sensorIds = ['A001', 'A002', 'B001', 'B002'] as const;
 const monthlyEggTargets: Record<string, Record<(typeof sensorIds)[number], number>> = {
-  '2025-12': { A001: 25, A002: 22, B001: 14, B002: 24 },
-  '2026-01': { A001: 26, A002: 23, B001: 12, B002: 18 },
-  '2026-02': { A001: 21, A002: 20, B001: 8, B002: 22 },
-  '2026-03': { A001: 24, A002: 19, B001: 10, B002: 25 },
-  '2026-04': { A001: 23, A002: 21, B001: 7, B002: 16 },
+  '2025-10': { A001: 28, A002: 25, B001: 19, B002: 14 },
+  '2025-11': { A001: 27, A002: 24, B001: 18, B002: 13 },
+  '2025-12': { A001: 27, A002: 23, B001: 17, B002: 12 },
+  '2026-01': { A001: 26, A002: 22, B001: 16, B002: 11 },
+  '2026-02': { A001: 25, A002: 21, B001: 16, B002: 10 },
+  '2026-03': { A001: 24, A002: 20, B001: 15, B002: 9 },
+  '2026-04': { A001: 23, A002: 19, B001: 14, B002: 8 },
+};
+
+const sensorProfiles: Record<(typeof sensorIds)[number], {
+  label: string;
+  productionBias: number;
+  instability: number;
+}> = {
+  A001: { label: 'produktif stabil', productionBias: 1.15, instability: 0.08 },
+  A002: { label: 'produktif sedang', productionBias: 1.0, instability: 0.1 },
+  B001: { label: 'menurun', productionBias: 0.82, instability: 0.16 },
+  B002: { label: 'afkir', productionBias: 0.6, instability: 0.22 },
 };
 
 function seededNumber(seed: number, min: number, max: number) {
@@ -41,6 +54,7 @@ function pickEggDays(total: number, totalDays: number, sensorIndex: number) {
 async function main() {
   console.log('Seeding Egg Monitoring database...');
 
+  await db.sensorAiPrediction.deleteMany();
   await db.actuatorLog.deleteMany();
   await db.actuator.deleteMany();
   await db.eggEvent.deleteMany();
@@ -80,11 +94,60 @@ async function main() {
     ],
   });
 
-  const sensorReadings: Prisma.SensorReadingCreateManyInput[] = [];
-  const gasReadings: Prisma.GasReadingCreateManyInput[] = [];
-  const heartbeats: Prisma.DeviceHeartbeatCreateManyInput[] = [];
-  const eggEvents: Prisma.EggEventCreateManyInput[] = [];
-  const dailyStats: Prisma.CoopDailyStatCreateManyInput[] = [];
+  const sensorReadings: Array<{
+    deviceId: string;
+    temperature: number;
+    humidity: number;
+    gasDetected: boolean;
+    gasValue: number;
+    createdAt: Date;
+  }> = [];
+  const gasReadings: Array<{
+    deviceId: string;
+    gasDetected: boolean;
+    analogValue: number;
+    notes: string;
+    createdAt: Date;
+  }> = [];
+  const heartbeats: Array<{
+    deviceId: string;
+    rssi: number;
+    freeHeap: number;
+    uptime: number;
+    createdAt: Date;
+  }> = [];
+  const eggEvents: Array<{
+    deviceId: string;
+    sensorId: string;
+    count: number;
+    notes: string;
+    createdAt: Date;
+  }> = [];
+  const dailyStats: Array<{
+    coopId: string;
+    date: Date;
+    eggCount: number;
+    avgTemp: number;
+    avgHumidity: number;
+    minTemp: number;
+    maxTemp: number;
+  }> = [];
+  const aiPredictions: Array<{
+    deviceId: string;
+    sensorId: string;
+    targetMonth: Date;
+    predictedEggs7d: number;
+    predictedEggs30d: number;
+    predictedMonthlyEggs: number;
+    predictedStatus: string;
+    confidence: number;
+    afkirRiskScore: number;
+    anomalyScore: number;
+    anomalyLabel: string;
+    modelVersion: string;
+    featureSnapshot: Record<string, string | number>;
+    generatedAt: Date;
+  }> = [];
 
   let globalDay = 0;
   for (const [month, targets] of Object.entries(monthlyEggTargets)) {
@@ -95,7 +158,8 @@ async function main() {
     sensorIds.forEach((sensorId, sensorIndex) => {
       const target = targets[sensorId];
       const eggDays = pickEggDays(target, totalDays, sensorIndex);
-      const remainingDoubleEggs = target - eggDays.length;
+      const remainingDoubleEggs = Math.max(0, target - eggDays.length);
+      const profile = sensorProfiles[sensorId];
 
       eggDays.forEach((day, eventIndex) => {
         const count = eventIndex < remainingDoubleEggs ? 2 : 1;
@@ -107,7 +171,7 @@ async function main() {
           deviceId: device.id,
           sensorId,
           count,
-          notes: target < 20 ? 'dummy afkir' : 'dummy produktif',
+          notes: `dummy ${profile.label}`,
           createdAt,
         });
         eggsByDay.set(day, (eggsByDay.get(day) ?? 0) + count);
@@ -117,8 +181,6 @@ async function main() {
     for (let day = 1; day <= totalDays; day += 1) {
       const date = new Date(start);
       date.setUTCDate(day);
-      const baseTemp = 37.3 + seededNumber(globalDay + 10, -0.5, 0.7);
-      const baseHumidity = 55 + seededNumber(globalDay + 20, -4, 4);
       const temps = [];
       const hums = [];
       let lastGasDetected = false;
@@ -127,12 +189,13 @@ async function main() {
       for (let hour = 0; hour < 24; hour += 2) {
         const createdAt = new Date(date);
         createdAt.setUTCHours(hour, 0, 0, 0);
-        const temp = Number((baseTemp + Math.sin(hour / 24 * Math.PI * 2) * 0.8 + seededNumber(globalDay + hour, -0.2, 0.2)).toFixed(1));
-        const humidity = Number((baseHumidity + Math.cos(hour / 24 * Math.PI * 2) * 1.7 + seededNumber(globalDay + hour + 40, -1, 1)).toFixed(1));
-        const gasDetected = (globalDay + hour) % 47 === 0 || (globalDay + hour) % 83 === 0;
+        const weatherStress = seededNumber(globalDay + 200, -0.4, 0.9);
+        const temp = Number((28.2 + weatherStress + Math.sin(hour / 24 * Math.PI * 2) * 2.4 + seededNumber(globalDay + hour, -0.3, 0.3)).toFixed(1));
+        const humidity = Number((54 + weatherStress * 3 + Math.cos(hour / 24 * Math.PI * 2) * 4.2 + seededNumber(globalDay + hour + 40, -1.4, 1.4)).toFixed(1));
+        const gasDetected = (globalDay + hour) % 19 === 0 || (globalDay + hour) % 37 === 0;
         const gasValue = Math.round(gasDetected
-          ? seededNumber(globalDay + hour + 80, 680, 880)
-          : seededNumber(globalDay + hour + 90, 180, 430));
+          ? seededNumber(globalDay + hour + 80, 1900, 2600)
+          : seededNumber(globalDay + hour + 90, 220, 620));
 
         sensorReadings.push({
           deviceId: device.id,
@@ -177,18 +240,6 @@ async function main() {
         minTemp: Math.min(...temps),
         maxTemp: Math.max(...temps),
       });
-
-      if (month === '2026-04' && day === 30) {
-        sensorReadings.push({
-          deviceId: device.id,
-          temperature: 37.6,
-          humidity: 56.2,
-          gasDetected: lastGasDetected,
-          gasValue: lastGasValue,
-          createdAt: new Date('2026-04-30T23:50:00.000Z'),
-        });
-      }
-
       globalDay += 1;
     }
   }
@@ -227,6 +278,47 @@ async function main() {
     })),
   });
 
+  const targetMonth = new Date(Date.UTC(2026, 4, 1));
+  sensorIds.forEach((sensorId, sensorIndex) => {
+    const baseMonthlyTarget = monthlyEggTargets['2026-04'][sensorId];
+    const profile = sensorProfiles[sensorId];
+    const predictedMonthlyEggs = Number((baseMonthlyTarget * profile.productionBias * seededNumber(sensorIndex + 11, 0.95, 1.05)).toFixed(1));
+    const predictedEggs30d = Number(predictedMonthlyEggs.toFixed(1));
+    const predictedEggs7d = Number((predictedMonthlyEggs / 30 * 7).toFixed(1));
+    const afkirRiskScore = Number(
+      Math.min(
+        0.98,
+        Math.max(0.08, (20 - predictedMonthlyEggs) / 20 * 0.75 + profile.instability),
+      ).toFixed(2),
+    );
+    const anomalyScore = Number((0.12 + sensorIndex * 0.16 + profile.instability).toFixed(2));
+    const predictedStatus =
+      predictedMonthlyEggs < 20 ? 'Afkir' : predictedMonthlyEggs < 24 ? 'Perlu Dipantau' : 'Produktif';
+    const anomalyLabel = anomalyScore >= 0.45 ? 'Tinggi' : anomalyScore >= 0.28 ? 'Sedang' : 'Rendah';
+
+    aiPredictions.push({
+      deviceId: device.id,
+      sensorId,
+      targetMonth,
+      predictedEggs7d,
+      predictedEggs30d,
+      predictedMonthlyEggs,
+      predictedStatus,
+      confidence: Number((0.84 - sensorIndex * 0.06).toFixed(2)),
+      afkirRiskScore,
+      anomalyScore,
+      anomalyLabel,
+      modelVersion: 'seed-demo-v1',
+      featureSnapshot: {
+        profile: profile.label,
+        latestMonthlyTarget: baseMonthlyTarget,
+        avgTemp7d: Number((29.4 + sensorIndex * 0.4).toFixed(1)),
+        gasAlertCount7d: 2 + sensorIndex,
+      },
+      generatedAt: new Date('2026-05-01T00:00:00.000Z'),
+    });
+  });
+
   await db.alert.createMany({
     data: [
       {
@@ -252,6 +344,8 @@ async function main() {
       },
     ],
   });
+
+  await db.sensorAiPrediction.createMany({ data: aiPredictions });
 
   console.log('Seeding complete.');
 }
