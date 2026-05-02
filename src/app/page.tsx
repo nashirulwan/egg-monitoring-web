@@ -21,6 +21,27 @@ type DeviceWithStatus = Device & {
   uptime: number | null;
 };
 
+function buildDashboardRecommendations(predictions: Array<{
+  sensorId: string;
+  predictedStatus: string;
+  afkirRiskScore: number;
+  anomalyLabel: string | null;
+}>) {
+  const recommendations: string[] = [];
+  const topRisk = predictions
+    .filter((item) => item.afkirRiskScore >= 0.65)
+    .map((item) => item.sensorId);
+  const anomaly = predictions
+    .filter((item) => item.anomalyLabel === 'Tinggi')
+    .map((item) => item.sensorId);
+
+  if (topRisk.length) recommendations.push(`Pantau ${topRisk.join(', ')}`);
+  if (anomaly.length) recommendations.push(`Cek pola sensor ${anomaly.join(', ')}`);
+  if (!topRisk.length && !anomaly.length) recommendations.push('Kondisi kandang stabil');
+
+  return recommendations.slice(0, 3);
+}
+
 async function getDashboardData() {
   const now = new Date();
   const latest = await db.sensorReading.findFirst({
@@ -168,6 +189,7 @@ export default async function DashboardPage() {
   const aiAvgHumidity = data.aiPredictions.length
     ? data.aiPredictions.reduce((sum, item) => sum + Number((item.featureSnapshot as Record<string, unknown> | null)?.avgHumidity30d ?? 0), 0) / data.aiPredictions.length
     : null;
+  const dashboardRecommendations = buildDashboardRecommendations(data.aiPredictions);
 
   return (
     <SharedLayout>
@@ -208,6 +230,11 @@ export default async function DashboardPage() {
                   : 'bulan target'}
                 . Sensor yang perlu perhatian: {aiHighRisk.length ? aiHighRisk.map((item) => item.sensorId).join(', ') : 'belum ada'}.
               </p>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+                {dashboardRecommendations.map((item) => (
+                  <span key={item} className="badge warning">{item}</span>
+                ))}
+              </div>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <span className="badge warning"><TrendingUp size={12} /> {totalAiMonthly.toFixed(1)} telur</span>
@@ -242,7 +269,10 @@ export default async function DashboardPage() {
             {data.aiPredictions.map((item) => (
               <div key={item.id} style={predictionCardStyle}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <strong>{item.sensorId}</strong>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <strong>{item.sensorId}</strong>
+                    {item.afkirRiskScore >= 0.65 && <span className="badge danger">Butuh aksi</span>}
+                  </div>
                   <span className={`badge ${item.predictedStatus === 'Produktif' ? 'success' : item.predictedStatus === 'Afkir' ? 'danger' : 'warning'}`}>
                     {item.predictedStatus}
                   </span>

@@ -21,6 +21,33 @@ function toPercent(value: number) {
   return `${Math.round(value * 100)}%`;
 }
 
+function buildRecommendations(predictions: Array<{
+  sensorId: string;
+  predictedStatus: string;
+  afkirRiskScore: number;
+  anomalyLabel: string | null;
+}>) {
+  const recommendations: string[] = [];
+  const afkirSensors = predictions.filter((item) => item.predictedStatus === 'Afkir');
+  const watchSensors = predictions.filter((item) => item.predictedStatus === 'Perlu Dipantau');
+  const anomalySensors = predictions.filter((item) => item.anomalyLabel === 'Tinggi');
+
+  if (afkirSensors.length) {
+    recommendations.push(`Evaluasi ${afkirSensors.map((item) => item.sensorId).join(', ')} karena prediksi produksi bulanan berada di bawah batas afkir.`);
+  }
+  if (watchSensors.length) {
+    recommendations.push(`Pantau ${watchSensors.map((item) => item.sensorId).join(', ')} pada 7 hari ke depan untuk melihat apakah tren telur masih turun.`);
+  }
+  if (anomalySensors.length) {
+    recommendations.push(`Cek kondisi lingkungan pada ${anomalySensors.map((item) => item.sensorId).join(', ')} karena pola sensor terdeteksi tidak normal.`);
+  }
+  if (recommendations.length === 0) {
+    recommendations.push('Produksi dan pola sensor masih stabil. Lanjutkan pemantauan rutin tanpa tindakan khusus.');
+  }
+
+  return recommendations;
+}
+
 export default async function PrediksiAiPage() {
   const latestRun = await db.sensorAiPrediction.findFirst({
     orderBy: { generatedAt: 'desc' },
@@ -53,6 +80,7 @@ export default async function PrediksiAiPage() {
   const avgConfidence = predictions.length
     ? predictionRows.reduce((sum, item) => sum + item.confidence, 0) / predictionRows.length
     : 0;
+  const recommendations = buildRecommendations(predictionRows);
 
   return (
     <SharedLayout>
@@ -103,6 +131,34 @@ export default async function PrediksiAiPage() {
       </div>
 
       <div className="card" style={{ marginBottom: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
+          <div>
+            <h3 style={{ fontSize: 16, fontWeight: 800 }}>Sumber Data AI</h3>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+              Prediksi tidak hanya dari sensor telur. Model membaca histori telur, suhu, kelembapan, dan kejadian gas tinggi.
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <span className="badge warning">Telur 7/30 hari</span>
+            <span className="badge success">Suhu & kelembapan</span>
+            <span className="badge danger">Gas tinggi</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 24 }}>
+        <h3 style={{ fontSize: 16, fontWeight: 800, marginBottom: 12 }}>Rekomendasi Tindakan</h3>
+        <div style={{ display: 'grid', gap: 10 }}>
+          {recommendations.map((item, index) => (
+            <div key={index} style={recommendationStyle}>
+              <span style={recommendationIndexStyle}>{index + 1}</span>
+              <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{item}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 24 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
           <div>
             <h3 style={{ fontSize: 16, fontWeight: 800 }}>Ringkasan Model</h3>
@@ -131,7 +187,11 @@ export default async function PrediksiAiPage() {
             return (
               <div key={item.id} style={sensorCardStyle}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                  <span style={{ fontWeight: 800, fontSize: 15 }}>{item.sensorId}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontWeight: 800, fontSize: 15 }}>{item.sensorId}</span>
+                    {item.afkirRiskScore >= 0.65 && <span className="badge danger">Butuh aksi</span>}
+                    {item.anomalyLabel === 'Tinggi' && <span className="badge warning">Anomali</span>}
+                  </div>
                   <span className={`badge ${statusStyle.badge}`}>{item.predictedStatus}</span>
                 </div>
                 <div style={{ fontSize: 26, fontWeight: 800, color: 'var(--text-primary)' }}>
@@ -190,4 +250,28 @@ const metricRowStyle: CSSProperties = {
   fontSize: 12,
   color: 'var(--text-secondary)',
   marginBottom: 6,
+};
+
+const recommendationStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'flex-start',
+  gap: 10,
+  padding: 12,
+  border: '1px solid var(--border-light)',
+  borderRadius: 8,
+  background: '#fff',
+};
+
+const recommendationIndexStyle: CSSProperties = {
+  width: 22,
+  height: 22,
+  borderRadius: 999,
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  background: 'rgba(212,160,23,0.12)',
+  color: 'var(--primary-dark)',
+  fontSize: 12,
+  fontWeight: 800,
+  flexShrink: 0,
 };

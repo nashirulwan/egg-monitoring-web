@@ -228,6 +228,10 @@ export default function RiwayatTelurClient() {
                                     <div style={{ marginBottom: 4 }}>
                                         Status AI: <span className={`badge ${prediction.predictedStatus === 'Produktif' ? 'success' : prediction.predictedStatus === 'Afkir' ? 'danger' : 'warning'}`}>{prediction.predictedStatus}</span>
                                     </div>
+                                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
+                                        {prediction.afkirRiskScore >= 0.65 && <span className="badge danger">Butuh aksi</span>}
+                                        {prediction.anomalyLabel === 'Tinggi' && <span className="badge warning">Cek sensor</span>}
+                                    </div>
                                     <div>Risiko afkir {Math.round(prediction.afkirRiskScore * 100)}% · confidence {Math.round(prediction.confidence * 100)}%</div>
                                 </div>
                             )}
