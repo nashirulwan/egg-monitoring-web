@@ -162,6 +162,12 @@ export default async function DashboardPage() {
   const totalAiMonthly = data.aiPredictions.reduce((sum, item) => sum + item.predictedMonthlyEggs, 0);
   const aiHighRisk = data.aiPredictions.filter((item) => item.afkirRiskScore >= 0.65);
   const aiAnomaly = data.aiPredictions.filter((item) => item.anomalyLabel === 'Tinggi');
+  const aiAvgTemp = data.aiPredictions.length
+    ? data.aiPredictions.reduce((sum, item) => sum + Number((item.featureSnapshot as Record<string, unknown> | null)?.avgTemp30d ?? 0), 0) / data.aiPredictions.length
+    : null;
+  const aiAvgHumidity = data.aiPredictions.length
+    ? data.aiPredictions.reduce((sum, item) => sum + Number((item.featureSnapshot as Record<string, unknown> | null)?.avgHumidity30d ?? 0), 0) / data.aiPredictions.length
+    : null;
 
   return (
     <SharedLayout>
@@ -188,45 +194,33 @@ export default async function DashboardPage() {
       />
 
       {data.aiPredictions.length > 0 && (
-        <div className="summary-grid" style={{ marginTop: 18, marginBottom: 24 }}>
-          <div className="summary-card brown">
-            <div className="summary-card-header">
-              <span className="summary-card-label">Perkiraan Telur AI</span>
-              <div className="summary-card-icon brown"><TrendingUp size={18} /></div>
+        <div className="card" style={{ marginTop: 18, marginBottom: 24, padding: 18 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 16, fontWeight: 800, marginBottom: 6 }}>
+                <Brain size={18} />
+                Ringkasan AI
+              </div>
+              <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                Perkiraan total {totalAiMonthly.toFixed(1)} telur untuk{' '}
+                {data.aiTargetMonth
+                  ? new Date(data.aiTargetMonth).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })
+                  : 'bulan target'}
+                . Sensor yang perlu perhatian: {aiHighRisk.length ? aiHighRisk.map((item) => item.sensorId).join(', ') : 'belum ada'}.
+              </p>
             </div>
-            <div className="summary-card-value">{totalAiMonthly.toFixed(1)}</div>
-            <div className="summary-card-sub">
-              prediksi total {data.aiTargetMonth
-                ? new Date(data.aiTargetMonth).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })
-                : 'bulan target'}
-            </div>
-          </div>
-          <div className="summary-card orange">
-            <div className="summary-card-header">
-              <span className="summary-card-label">Sensor Risiko Tinggi</span>
-              <div className="summary-card-icon orange"><AlertTriangle size={18} /></div>
-            </div>
-            <div className="summary-card-value">{aiHighRisk.length}</div>
-            <div className="summary-card-sub">
-              {aiHighRisk.length ? aiHighRisk.map((item) => item.sensorId).join(', ') : 'belum ada sensor kritis'}
-            </div>
-          </div>
-          <div className="summary-card green">
-            <div className="summary-card-header">
-              <span className="summary-card-label">Insight AI</span>
-              <div className="summary-card-icon green"><Brain size={18} /></div>
-            </div>
-            <div className="summary-card-value">{aiAnomaly.length}</div>
-            <div className="summary-card-sub">
-              anomali tinggi · model {data.aiModelVersion ?? '-'}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <span className="badge warning"><TrendingUp size={12} /> {totalAiMonthly.toFixed(1)} telur</span>
+              <span className="badge danger"><AlertTriangle size={12} /> {aiHighRisk.length} risiko tinggi</span>
+              <span className="badge success"><Brain size={12} /> {aiAnomaly.length} anomali tinggi</span>
             </div>
           </div>
         </div>
       )}
 
       <div className="charts-grid">
-        <SensorChart type="temperature" />
-        <SensorChart type="humidity" />
+        <SensorChart type="temperature" forecastValue={aiAvgTemp} forecastLabel="Pola AI suhu" />
+        <SensorChart type="humidity" forecastValue={aiAvgHumidity} forecastLabel="Pola AI kelembapan" />
       </div>
 
       {data.aiPredictions.length > 0 && (
@@ -255,6 +249,10 @@ export default async function DashboardPage() {
                 </div>
                 <div style={{ fontSize: 24, fontWeight: 800 }}>{item.predictedMonthlyEggs.toFixed(1)}</div>
                 <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>perkiraan telur / 30 hari</div>
+                <div style={predictionMetricStyle}>
+                  <span>Prediksi 7 hari</span>
+                  <strong>{item.predictedEggs7d.toFixed(1)}</strong>
+                </div>
                 <div style={predictionMetricStyle}>
                   <span>Risiko afkir</span>
                   <strong>{Math.round(item.afkirRiskScore * 100)}%</strong>

@@ -127,29 +127,21 @@ export default function SensorLogPage() {
             </div>
 
             {aiPredictions.length > 0 && (
-                <div className="summary-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: 24 }}>
-                    <div className="summary-card brown">
-                        <div className="summary-card-header">
-                            <span className="summary-card-label">AI Anomali Sensor</span>
+                <div className="card" style={{ marginBottom: 24, padding: 18 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                        <div>
+                            <h3 style={{ fontSize: 16, fontWeight: 800, marginBottom: 4 }}>Ringkasan AI Sensor</h3>
+                            <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+                                Anomali tinggi: {highAnomaly.length ? highAnomaly.map((item) => item.sensorId).join(', ') : 'tidak ada'} ·
+                                pola suhu {avgPredictedTemp ?? '—'}°C ·
+                                gas tinggi historis {totalGasAlerts} kali
+                            </p>
                         </div>
-                        <div className="summary-card-value">{highAnomaly.length}</div>
-                        <div className="summary-card-sub">
-                            {highAnomaly.length ? highAnomaly.map((item) => item.sensorId).join(', ') : 'semua sensor normal'}
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <span className="badge danger">{highAnomaly.length} anomali tinggi</span>
+                            <span className="badge warning">{avgPredictedTemp ?? '—'}°C pola suhu</span>
+                            <span className="badge success">{totalGasAlerts} gas alert</span>
                         </div>
-                    </div>
-                    <div className="summary-card orange">
-                        <div className="summary-card-header">
-                            <span className="summary-card-label">Perkiraan Suhu Pola</span>
-                        </div>
-                        <div className="summary-card-value">{avgPredictedTemp ?? '—'}</div>
-                        <div className="summary-card-sub">rata-rata suhu 30 hari dari fitur AI</div>
-                    </div>
-                    <div className="summary-card green">
-                        <div className="summary-card-header">
-                            <span className="summary-card-label">Gas Alert Historis</span>
-                        </div>
-                        <div className="summary-card-value">{totalGasAlerts}</div>
-                        <div className="summary-card-sub">total kejadian gas tinggi di dataset AI</div>
                     </div>
                 </div>
             )}

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import {
-    AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+    AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
 } from 'recharts';
 
 type Range = '1h' | '24h' | '7d' | '30d';
@@ -16,6 +16,8 @@ interface DataPoint {
 
 interface ChartProps {
     type: 'temperature' | 'humidity';
+    forecastValue?: number | null;
+    forecastLabel?: string;
 }
 
 const formatLabel = (type: 'temperature' | 'humidity', range: Range) => {
@@ -40,7 +42,7 @@ const getYAxisDomain = (type: 'temperature' | 'humidity') => {
     ] as const;
 };
 
-export default function SensorChart({ type }: ChartProps) {
+export default function SensorChart({ type, forecastValue = null, forecastLabel = 'Pola AI 30 hari' }: ChartProps) {
     const [range, setRange] = useState<Range>('1h');
     const [data, setData] = useState<DataPoint[]>([]);
     const [loading, setLoading] = useState(true);
@@ -92,6 +94,7 @@ export default function SensorChart({ type }: ChartProps) {
                     <div className="chart-card-subtitle">
                         {isTemp ? 'Suhu kandang dari DHT22' : 'Kelembapan kandang dari DHT22'}
                         {(range === '1h' || range === '24h') && lastUpdated ? ` · update ${lastUpdated.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` : ''}
+                        {range === '30d' && forecastValue !== null ? ` · ${forecastLabel}: ${forecastValue.toFixed(1)}${unit}` : ''}
                     </div>
                 </div>
                 <div className="range-tabs">
@@ -146,6 +149,15 @@ export default function SensorChart({ type }: ChartProps) {
                             formatter={tooltipFormatter(type)}
                             labelFormatter={label}
                         />
+                        {range === '30d' && forecastValue !== null && (
+                            <ReferenceLine
+                                y={forecastValue}
+                                stroke={strokeColor}
+                                strokeDasharray="4 4"
+                                strokeOpacity={0.55}
+                                ifOverflow="extendDomain"
+                            />
+                        )}
                         <Area
                             type="monotone"
                             dataKey="avg"
