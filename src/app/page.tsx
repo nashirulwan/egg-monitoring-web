@@ -8,6 +8,7 @@ import DeviceStatus from '@/components/dashboard/DeviceStatus';
 import EggMonitor from '@/components/dashboard/EggMonitor';
 import DashboardClock from '@/components/dashboard/DashboardClock';
 import { getOfflineTimeoutMs } from '@/lib/server';
+import { Brain, AlertTriangle, TrendingUp } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -123,6 +124,16 @@ async function getDashboardData() {
   });
 
   const allActuators: Actuator[] = await db.actuator.findMany();
+  const latestPredictionRun = await db.sensorAiPrediction.findFirst({
+    orderBy: { generatedAt: 'desc' },
+    select: { generatedAt: true, targetMonth: true, modelVersion: true },
+  });
+  const aiPredictions = latestPredictionRun
+    ? await db.sensorAiPrediction.findMany({
+        where: { generatedAt: latestPredictionRun.generatedAt },
+        orderBy: { sensorId: 'asc' },
+      })
+    : [];
 
   return {
     temperature: liveReading?.temperature ?? null,
@@ -139,11 +150,18 @@ async function getDashboardData() {
     isOnline,
     devices: devicesWithStatus,
     actuators: allActuators,
+    aiPredictions,
+    aiGeneratedAt: latestPredictionRun?.generatedAt ?? null,
+    aiTargetMonth: latestPredictionRun?.targetMonth ?? null,
+    aiModelVersion: latestPredictionRun?.modelVersion ?? null,
   };
 }
 
 export default async function DashboardPage() {
   const data = await getDashboardData();
+  const totalAiMonthly = data.aiPredictions.reduce((sum, item) => sum + item.predictedMonthlyEggs, 0);
+  const aiHighRisk = data.aiPredictions.filter((item) => item.afkirRiskScore >= 0.65);
+  const aiAnomaly = data.aiPredictions.filter((item) => item.anomalyLabel === 'Tinggi');
 
   return (
     <SharedLayout>
@@ -169,10 +187,87 @@ export default async function DashboardPage() {
         }}
       />
 
+      {data.aiPredictions.length > 0 && (
+        <div className="summary-grid" style={{ marginTop: 18, marginBottom: 24 }}>
+          <div className="summary-card brown">
+            <div className="summary-card-header">
+              <span className="summary-card-label">Perkiraan Telur AI</span>
+              <div className="summary-card-icon brown"><TrendingUp size={18} /></div>
+            </div>
+            <div className="summary-card-value">{totalAiMonthly.toFixed(1)}</div>
+            <div className="summary-card-sub">
+              prediksi total {data.aiTargetMonth
+                ? new Date(data.aiTargetMonth).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })
+                : 'bulan target'}
+            </div>
+          </div>
+          <div className="summary-card orange">
+            <div className="summary-card-header">
+              <span className="summary-card-label">Sensor Risiko Tinggi</span>
+              <div className="summary-card-icon orange"><AlertTriangle size={18} /></div>
+            </div>
+            <div className="summary-card-value">{aiHighRisk.length}</div>
+            <div className="summary-card-sub">
+              {aiHighRisk.length ? aiHighRisk.map((item) => item.sensorId).join(', ') : 'belum ada sensor kritis'}
+            </div>
+          </div>
+          <div className="summary-card green">
+            <div className="summary-card-header">
+              <span className="summary-card-label">Insight AI</span>
+              <div className="summary-card-icon green"><Brain size={18} /></div>
+            </div>
+            <div className="summary-card-value">{aiAnomaly.length}</div>
+            <div className="summary-card-sub">
+              anomali tinggi · model {data.aiModelVersion ?? '-'}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="charts-grid">
         <SensorChart type="temperature" />
         <SensorChart type="humidity" />
       </div>
+
+      {data.aiPredictions.length > 0 && (
+        <div className="card" style={{ marginTop: 24, marginBottom: 24 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <div>
+              <h3 style={{ fontSize: 16, fontWeight: 800 }}>Perkiraan AI Per Sensor</h3>
+              <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                Prediksi telur bulanan, status, dan risiko afkir langsung dari data histori
+              </p>
+            </div>
+            {data.aiGeneratedAt && (
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                update {new Date(data.aiGeneratedAt).toLocaleString('id-ID')}
+              </div>
+            )}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+            {data.aiPredictions.map((item) => (
+              <div key={item.id} style={predictionCardStyle}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <strong>{item.sensorId}</strong>
+                  <span className={`badge ${item.predictedStatus === 'Produktif' ? 'success' : item.predictedStatus === 'Afkir' ? 'danger' : 'warning'}`}>
+                    {item.predictedStatus}
+                  </span>
+                </div>
+                <div style={{ fontSize: 24, fontWeight: 800 }}>{item.predictedMonthlyEggs.toFixed(1)}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>perkiraan telur / 30 hari</div>
+                <div style={predictionMetricStyle}>
+                  <span>Risiko afkir</span>
+                  <strong>{Math.round(item.afkirRiskScore * 100)}%</strong>
+                </div>
+                <div style={predictionMetricStyle}>
+                  <span>Anomali</span>
+                  <strong>{item.anomalyLabel ?? 'Rendah'}</strong>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="bottom-grid">
         <ActuatorControls actuators={data.actuators} />
@@ -188,3 +283,19 @@ export default async function DashboardPage() {
     </SharedLayout>
   );
 }
+
+const predictionCardStyle = {
+  border: '1px solid var(--border-light)',
+  borderRadius: 8,
+  padding: 14,
+  background: '#fff',
+};
+
+const predictionMetricStyle = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  fontSize: 12,
+  color: 'var(--text-secondary)',
+  marginBottom: 6,
+};

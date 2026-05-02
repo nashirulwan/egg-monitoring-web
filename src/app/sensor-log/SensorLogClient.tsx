@@ -21,12 +21,25 @@ interface Pagination {
     totalPages: number;
 }
 
+interface AiPrediction {
+    sensorId: string;
+    predictedStatus: string;
+    afkirRiskScore: number;
+    anomalyLabel: string | null;
+    anomalyScore: number | null;
+    featureSnapshot?: {
+        gasAlertCount30d?: number;
+        avgTemp30d?: number;
+    } | null;
+}
+
 export default function SensorLogPage() {
     const [readings, setReadings] = useState<SensorReading[]>([]);
     const [pagination, setPagination] = useState<Pagination>({ page: 1, limit: 25, total: 0, totalPages: 0 });
     const [loading, setLoading] = useState(true);
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
+    const [aiPredictions, setAiPredictions] = useState<AiPrediction[]>([]);
 
     const fetchData = useCallback(async (page = 1) => {
         setLoading(true);
@@ -41,12 +54,19 @@ export default function SensorLogPage() {
         setLoading(false);
     }, [dateFrom, dateTo]);
 
+    const fetchAiPredictions = useCallback(async () => {
+        const res = await fetch('/api/ai/predictions');
+        const json = await res.json();
+        setAiPredictions(json.predictions || []);
+    }, []);
+
     useEffect(() => {
         const timeout = window.setTimeout(() => {
             void fetchData();
+            void fetchAiPredictions();
         }, 0);
         return () => window.clearTimeout(timeout);
-    }, [fetchData]);
+    }, [fetchAiPredictions, fetchData]);
 
     useEffect(() => {
         if (pagination.page !== 1) return undefined;
@@ -57,6 +77,12 @@ export default function SensorLogPage() {
 
         return () => window.clearInterval(interval);
     }, [fetchData, pagination.page]);
+
+    const highAnomaly = aiPredictions.filter((item) => item.anomalyLabel === 'Tinggi');
+    const avgPredictedTemp = aiPredictions.length
+        ? (aiPredictions.reduce((sum, item) => sum + Number(item.featureSnapshot?.avgTemp30d || 0), 0) / aiPredictions.length).toFixed(1)
+        : null;
+    const totalGasAlerts = aiPredictions.reduce((sum, item) => sum + Number(item.featureSnapshot?.gasAlertCount30d || 0), 0);
 
     const tempColor = (t: number) => {
         if (t > 32) return 'var(--danger)';
@@ -99,6 +125,34 @@ export default function SensorLogPage() {
                     </button>
                 </div>
             </div>
+
+            {aiPredictions.length > 0 && (
+                <div className="summary-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: 24 }}>
+                    <div className="summary-card brown">
+                        <div className="summary-card-header">
+                            <span className="summary-card-label">AI Anomali Sensor</span>
+                        </div>
+                        <div className="summary-card-value">{highAnomaly.length}</div>
+                        <div className="summary-card-sub">
+                            {highAnomaly.length ? highAnomaly.map((item) => item.sensorId).join(', ') : 'semua sensor normal'}
+                        </div>
+                    </div>
+                    <div className="summary-card orange">
+                        <div className="summary-card-header">
+                            <span className="summary-card-label">Perkiraan Suhu Pola</span>
+                        </div>
+                        <div className="summary-card-value">{avgPredictedTemp ?? '—'}</div>
+                        <div className="summary-card-sub">rata-rata suhu 30 hari dari fitur AI</div>
+                    </div>
+                    <div className="summary-card green">
+                        <div className="summary-card-header">
+                            <span className="summary-card-label">Gas Alert Historis</span>
+                        </div>
+                        <div className="summary-card-value">{totalGasAlerts}</div>
+                        <div className="summary-card-sub">total kejadian gas tinggi di dataset AI</div>
+                    </div>
+                </div>
+            )}
 
             <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
                 <table style={tableStyle}>

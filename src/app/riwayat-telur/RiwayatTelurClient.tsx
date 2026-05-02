@@ -35,6 +35,16 @@ interface SensorSummary {
     status: 'Produktif' | 'Afkir';
 }
 
+interface AiPrediction {
+    sensorId: string;
+    predictedEggs7d: number;
+    predictedMonthlyEggs: number;
+    predictedStatus: 'Produktif' | 'Perlu Dipantau' | 'Afkir';
+    confidence: number;
+    afkirRiskScore: number;
+    anomalyLabel: string | null;
+}
+
 const sensorColors: Record<string, string> = {
     A001: '#D4A017',
     A002: '#E8913A',
@@ -72,6 +82,7 @@ export default function RiwayatTelurClient() {
     const [daysInMonth, setDaysInMonth] = useState(30);
     const [monthlyTarget, setMonthlyTarget] = useState(20);
     const [loading, setLoading] = useState(true);
+    const [aiPredictions, setAiPredictions] = useState<AiPrediction[]>([]);
 
     const fetchData = useCallback(async (page = 1) => {
         setLoading(true);
@@ -87,12 +98,19 @@ export default function RiwayatTelurClient() {
         setLoading(false);
     }, [month]);
 
+    const fetchAiPredictions = useCallback(async () => {
+        const res = await fetch('/api/ai/predictions');
+        const json = await res.json();
+        setAiPredictions(json.predictions || []);
+    }, []);
+
     useEffect(() => {
         const timeout = window.setTimeout(() => {
             void fetchData();
+            void fetchAiPredictions();
         }, 0);
         return () => window.clearTimeout(timeout);
-    }, [fetchData]);
+    }, [fetchAiPredictions, fetchData]);
 
     useEffect(() => {
         if (pagination.page !== 1) return undefined;
@@ -110,6 +128,7 @@ export default function RiwayatTelurClient() {
         month: 'long',
         year: 'numeric',
     });
+    const predictionBySensor = new Map(aiPredictions.map((item) => [item.sensorId, item]));
     return (
         <>
             <div className="page-header">
@@ -174,7 +193,9 @@ export default function RiwayatTelurClient() {
                     </div>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
-                    {sensorSummary.map((sensor) => (
+                    {sensorSummary.map((sensor) => {
+                        const prediction = predictionBySensor.get(sensor.sensorId);
+                        return (
                         <div key={sensor.sensorId} style={sensorCardStyle}>
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                                 <span style={{ fontWeight: 800, color: sensorColors[sensor.sensorId] }}>{sensor.sensorId}</span>
@@ -199,8 +220,19 @@ export default function RiwayatTelurClient() {
                                     })
                                     : 'belum ada'}
                             </div>
+                            {prediction && (
+                                <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border-light)', fontSize: 11, color: 'var(--text-secondary)' }}>
+                                    <div style={{ marginBottom: 4 }}>
+                                        AI: <strong>{prediction.predictedMonthlyEggs.toFixed(1)}</strong> telur / bulan
+                                    </div>
+                                    <div style={{ marginBottom: 4 }}>
+                                        Status AI: <span className={`badge ${prediction.predictedStatus === 'Produktif' ? 'success' : prediction.predictedStatus === 'Afkir' ? 'danger' : 'warning'}`}>{prediction.predictedStatus}</span>
+                                    </div>
+                                    <div>Risiko afkir {Math.round(prediction.afkirRiskScore * 100)}% · confidence {Math.round(prediction.confidence * 100)}%</div>
+                                </div>
+                            )}
                         </div>
-                    ))}
+                    )})}
                 </div>
             </div>
 
