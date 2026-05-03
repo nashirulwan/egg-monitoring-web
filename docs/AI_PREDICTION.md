@@ -4,6 +4,8 @@ Pipeline AI proyek ini dibagi menjadi tiga tahap:
 
 1. `export-ai-dataset.ts`
    - Ambil histori telur dan sensor dari Prisma/PostgreSQL.
+   - Default range dummy/training: `2026-01-01` sampai `2026-05-02`.
+   - Bulan yang belum penuh, seperti Mei yang hanya berisi 2 hari, tidak dipakai sebagai target training.
    - Bentuk dataset bulanan per sensor.
    - Tulis file `artifacts/ai-dataset.json`.
 
@@ -72,7 +74,7 @@ Halaman `/prediksi-ai` menampilkan:
 
 ## Catatan dummy
 
-Seed dummy saat ini dibuat berpola:
+Seed dummy saat ini dibuat berpola dari `2026-01-01` sampai `2026-05-02`:
 
 - `A001` produktif stabil
 - `A002` produktif sedang

@@ -4,15 +4,17 @@ const db = new PrismaClient();
 
 const deviceId = 'esp32-01';
 const sensorIds = ['A001', 'A002', 'B001', 'B002'] as const;
-const monthlyEggTargets: Record<string, Record<(typeof sensorIds)[number], number>> = {
-  '2025-10': { A001: 28, A002: 25, B001: 19, B002: 14 },
-  '2025-11': { A001: 27, A002: 24, B001: 18, B002: 13 },
-  '2025-12': { A001: 27, A002: 23, B001: 17, B002: 12 },
-  '2026-01': { A001: 26, A002: 22, B001: 16, B002: 11 },
-  '2026-02': { A001: 25, A002: 21, B001: 16, B002: 10 },
-  '2026-03': { A001: 24, A002: 20, B001: 15, B002: 9 },
-  '2026-04': { A001: 23, A002: 19, B001: 14, B002: 8 },
-};
+const historyPlan: Array<{
+  month: string;
+  days: number;
+  targets: Record<(typeof sensorIds)[number], number>;
+}> = [
+  { month: '2026-01', days: 31, targets: { A001: 26, A002: 22, B001: 16, B002: 11 } },
+  { month: '2026-02', days: 28, targets: { A001: 25, A002: 21, B001: 16, B002: 10 } },
+  { month: '2026-03', days: 31, targets: { A001: 24, A002: 20, B001: 15, B002: 9 } },
+  { month: '2026-04', days: 30, targets: { A001: 23, A002: 19, B001: 14, B002: 8 } },
+  { month: '2026-05', days: 2, targets: { A001: 2, A002: 1, B001: 1, B002: 0 } },
+];
 
 const sensorProfiles: Record<(typeof sensorIds)[number], {
   label: string;
@@ -150,9 +152,9 @@ async function main() {
   }> = [];
 
   let globalDay = 0;
-  for (const [month, targets] of Object.entries(monthlyEggTargets)) {
+  for (const period of historyPlan) {
+    const { month, targets, days: totalDays } = period;
     const start = monthStart(month);
-    const totalDays = daysInMonth(month);
     const eggsByDay = new Map<number, number>();
 
     sensorIds.forEach((sensorId, sensorIndex) => {
@@ -280,7 +282,7 @@ async function main() {
 
   const targetMonth = new Date(Date.UTC(2026, 4, 1));
   sensorIds.forEach((sensorId, sensorIndex) => {
-    const baseMonthlyTarget = monthlyEggTargets['2026-04'][sensorId];
+    const baseMonthlyTarget = historyPlan.find((item) => item.month === '2026-04')!.targets[sensorId];
     const profile = sensorProfiles[sensorId];
     const predictedMonthlyEggs = Number((baseMonthlyTarget * profile.productionBias * seededNumber(sensorIndex + 11, 0.95, 1.05)).toFixed(1));
     const predictedEggs30d = Number(predictedMonthlyEggs.toFixed(1));

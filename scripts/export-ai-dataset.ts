@@ -36,6 +36,8 @@ interface PredictionRow {
 }
 
 const SENSOR_IDS: SensorId[] = ['A001', 'A002', 'B001', 'B002'];
+const DEFAULT_START_DATE = new Date('2026-01-01T00:00:00.000Z');
+const DEFAULT_END_DATE = new Date('2026-05-02T23:59:59.999Z');
 
 function monthKey(date: Date) {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
@@ -65,13 +67,27 @@ function statusFromMonthlyEggs(value: number): DatasetRow['target']['status'] {
 
 async function main() {
   const outputPath = process.argv[2] || path.join(process.cwd(), 'artifacts', 'ai-dataset.json');
+  const startDate = process.argv[3] ? new Date(process.argv[3]) : DEFAULT_START_DATE;
+  const endDate = process.argv[4] ? new Date(process.argv[4]) : DEFAULT_END_DATE;
 
   const [eggEvents, sensorReadings] = await Promise.all([
     db.eggEvent.findMany({
+      where: {
+        createdAt: {
+          gte: startDate,
+          lte: endDate,
+        },
+      },
       orderBy: { createdAt: 'asc' },
       select: { deviceId: true, sensorId: true, count: true, createdAt: true },
     }),
     db.sensorReading.findMany({
+      where: {
+        createdAt: {
+          gte: startDate,
+          lte: endDate,
+        },
+      },
       orderBy: { createdAt: 'asc' },
       select: {
         deviceId: true,
@@ -87,6 +103,7 @@ async function main() {
   const monthlyEggs = new Map<string, Map<SensorId, number>>();
   type SensorReadingRow = (typeof sensorReadings)[number];
   const monthlyReadings = new Map<string, SensorReadingRow[]>();
+  const observedDays = new Map<string, number>();
 
   for (const sensorId of SENSOR_IDS) {
     for (const event of eggEvents) {
@@ -104,18 +121,26 @@ async function main() {
     const bucket = monthlyReadings.get(month) ?? [];
     bucket.push(reading);
     monthlyReadings.set(month, bucket);
+    observedDays.set(month, Math.max(observedDays.get(month) ?? 0, reading.createdAt.getUTCDate()));
+  }
+
+  for (const event of eggEvents) {
+    const month = monthKey(event.createdAt);
+    observedDays.set(month, Math.max(observedDays.get(month) ?? 0, event.createdAt.getUTCDate()));
   }
 
   const sortedMonths = Array.from(new Set([
     ...Array.from(monthlyEggs.keys()),
     ...Array.from(monthlyReadings.keys()),
   ])).sort();
+  const fullMonths = sortedMonths.filter((month) => (observedDays.get(month) ?? 0) >= daysInMonth(month));
+  const sourceMonths = fullMonths.length > 0 ? fullMonths : sortedMonths;
 
   const trainRows: DatasetRow[] = [];
   const predictionRows: PredictionRow[] = [];
 
-  for (let i = 0; i < sortedMonths.length; i += 1) {
-    const month = sortedMonths[i];
+  for (let i = 0; i < sourceMonths.length; i += 1) {
+    const month = sourceMonths[i];
     const nextMonth = addMonth(month, 1);
     const prevMonth = addMonth(month, -1);
     const prev2Month = addMonth(month, -2);
@@ -161,7 +186,8 @@ async function main() {
       };
 
       const nextValue = (monthlyEggs.get(nextMonth) ?? new Map<SensorId, number>()).get(sensorId);
-      if (nextValue != null) {
+      const nextMonthIsFull = fullMonths.includes(nextMonth);
+      if (nextValue != null && nextMonthIsFull) {
         trainRows.push({
           deviceId,
           sensorId,
@@ -175,7 +201,7 @@ async function main() {
         });
       }
 
-      if (i === sortedMonths.length - 1) {
+      if (i === sourceMonths.length - 1) {
         predictionRows.push({
           deviceId,
           sensorId,
@@ -196,6 +222,11 @@ async function main() {
         generatedAt: new Date().toISOString(),
         deviceId,
         months: sortedMonths,
+        fullMonths,
+        dateRange: {
+          start: startDate.toISOString(),
+          end: endDate.toISOString(),
+        },
         trainRows,
         predictionRows,
       },
