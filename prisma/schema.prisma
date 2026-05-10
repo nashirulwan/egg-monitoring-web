@@ -102,20 +102,6 @@ model SensorAiPrediction {
   @@index([targetMonth, generatedAt])
 }
 
-model MqttMessageLog {
-  id          String   @id @default(cuid())
-  topic       String
-  messageType String
-  deviceId    String?
-  payload     Json
-  status      String   @default("received") // received, forwarded, saved, error
-  error       String?
-  createdAt   DateTime @default(now())
-
-  @@index([messageType, createdAt])
-  @@index([deviceId, createdAt])
-}
-
 model Actuator {
   id        String   @id @default(cuid())
   deviceId  String

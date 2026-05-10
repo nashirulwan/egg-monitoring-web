@@ -101,6 +101,7 @@ async function main() {
 
   const deviceId = eggEvents[0]?.deviceId || sensorReadings[0]?.deviceId || 'esp32-01';
   const monthlyEggs = new Map<string, Map<SensorId, number>>();
+  type EggEventRow = (typeof eggEvents)[number];
   type SensorReadingRow = (typeof sensorReadings)[number];
   const monthlyReadings = new Map<string, SensorReadingRow[]>();
   const observedDays = new Map<string, number>();
@@ -163,11 +164,11 @@ async function main() {
       const prevMonthlyEggs = monthEggs.get(sensorId) ?? 0;
       const rollingEggAvg2m = ((monthEggs.get(sensorId) ?? 0) + (prevMonthEggs.get(sensorId) ?? 0)) / 2;
       const prevEggs7d = eggEvents
-        .filter((event) => event.sensorId === sensorId && monthKey(event.createdAt) === month && event.createdAt.getUTCDate() >= last7DaysStart)
-        .reduce((sum: number, event) => sum + event.count, 0);
+        .filter((event: EggEventRow) => event.sensorId === sensorId && monthKey(event.createdAt) === month && event.createdAt.getUTCDate() >= last7DaysStart)
+        .reduce((sum: number, event: EggEventRow) => sum + event.count, 0);
 
       const lastEggDate = eggEvents
-        .filter((event) => event.sensorId === sensorId && monthKey(event.createdAt) === month)
+        .filter((event: EggEventRow) => event.sensorId === sensorId && monthKey(event.createdAt) === month)
         .at(-1)?.createdAt;
       const daysWithoutEgg = lastEggDate
         ? Math.max(0, daysInMonth(month) - lastEggDate.getUTCDate())

@@ -33,6 +33,7 @@ const unsigned long HEARTBEAT_INTERVAL = 30000;
 const unsigned long EGG_SEND_INTERVAL = 60000;
 const unsigned long SETTINGS_POLL_INTERVAL = 5000;
 const unsigned long DEFAULT_ACTUATOR_POLL_INTERVAL = 1000;
+const unsigned long AI_ACTION_POLL_INTERVAL = 15000;
 const unsigned long HTTP_TIMEOUT = 10000;
 const float MIN_VALID_TEMP = 10.0;
 const float MAX_VALID_TEMP = 60.0;
@@ -76,6 +77,7 @@ unsigned long lastIrPollTime = 0;
 unsigned long lastIrDebugTime = 0;
 unsigned long lastActuatorPollTime = 0;
 unsigned long lastSettingsPollTime = 0;
+unsigned long lastAiPollTime = 0;
 
 unsigned long sensorInterval = DEFAULT_SENSOR_INTERVAL;
 float fanOnTemp = 28.0;
@@ -87,6 +89,19 @@ bool autoFan1On = false;
 bool autoFan2On = false;
 bool autoLampOn = false;
 bool autoConveyorOn = false;
+
+bool hasValidSensorReading = false;
+float lastTemperature = NAN;
+float lastHumidity = NAN;
+int lastGasValue = 0;
+bool lastGasDetected = false;
+
+bool aiEnabled = false;
+bool aiWarningMode = false;
+bool aiFanAssist = false;
+bool aiConveyorAssist = false;
+String aiPrioritySensors = "";
+String aiReasons = "";
 
 bool manualFan1Override = false;
 bool manualFan2Override = false;
@@ -237,6 +252,19 @@ unsigned long readUnsignedLongSetting(JsonVariant value, unsigned long currentVa
   return value.as<unsigned long>();
 }
 
+void recomputeAutoStates() {
+  bool tempHigh = hasValidSensorReading && lastTemperature > fanOnTemp;
+  bool tempLow = hasValidSensorReading && lastTemperature < lampOnTemp;
+  bool gasUnsafe = hasValidSensorReading && lastGasDetected;
+
+  autoFan1On = tempHigh || (aiEnabled && aiFanAssist);
+  autoFan2On = tempHigh || (aiEnabled && aiFanAssist);
+  autoLampOn = tempLow;
+  autoConveyorOn = gasUnsafe || (aiEnabled && aiConveyorAssist);
+
+  applyRelayStates();
+}
+
 void syncSettings() {
   String response;
   int httpCode = sendGet("/api/settings", response);
@@ -257,6 +285,7 @@ void syncSettings() {
 
   Serial.printf("  Settings -> sensor: %lums, fan > %.1f C, lamp < %.1f C, gas >= %d, actuator poll: %lums\n",
                 sensorInterval, fanOnTemp, lampOnTemp, gasThreshold, actuatorPollInterval);
+  recomputeAutoStates();
 }
 
 int relayLevel(bool on) {
@@ -299,6 +328,50 @@ void setManualActuatorState(int pin, bool state, bool manualOverride, const char
     manualConveyorState = state;
     manualConveyorOverride = manualOverride;
   }
+}
+
+void syncAiActions() {
+  String response;
+  int httpCode = sendGet(String("/api/ai/actions?deviceId=") + DEVICE_ID, response);
+  if (httpCode < 200 || httpCode >= 300) return;
+
+  StaticJsonDocument<1024> doc;
+  DeserializationError error = deserializeJson(doc, response);
+  if (error) {
+    Serial.printf("  AI action JSON failed: %s\n", error.c_str());
+    return;
+  }
+
+  JsonObject actions = doc["actions"].as<JsonObject>();
+  if (actions.isNull()) return;
+
+  aiEnabled = actions["aiEnabled"] | false;
+  aiWarningMode = actions["warningMode"] | false;
+  aiFanAssist = actions["fanAssist"] | false;
+  aiConveyorAssist = actions["conveyorAssist"] | false;
+
+  aiPrioritySensors = "";
+  JsonArray prioritySensors = actions["prioritySensors"].as<JsonArray>();
+  for (JsonVariant sensor : prioritySensors) {
+    if (aiPrioritySensors.length() > 0) aiPrioritySensors += ",";
+    aiPrioritySensors += sensor.as<const char*>();
+  }
+
+  aiReasons = "";
+  JsonArray reasons = actions["reasons"].as<JsonArray>();
+  for (JsonVariant reason : reasons) {
+    if (aiReasons.length() > 0) aiReasons += ";";
+    aiReasons += reason.as<const char*>();
+  }
+
+  Serial.printf("  AI -> enabled:%s warning:%s fanAssist:%s conveyorAssist:%s priorities:%s reasons:%s\n",
+                aiEnabled ? "ON" : "OFF",
+                aiWarningMode ? "ON" : "OFF",
+                aiFanAssist ? "ON" : "OFF",
+                aiConveyorAssist ? "ON" : "OFF",
+                aiPrioritySensors.length() ? aiPrioritySensors.c_str() : "-",
+                aiReasons.length() ? aiReasons.c_str() : "-");
+  recomputeAutoStates();
 }
 
 void syncActuators() {
@@ -352,11 +425,12 @@ void sendSensorData() {
     return;
   }
 
-  autoFan1On = temp > fanOnTemp;
-  autoFan2On = temp > fanOnTemp;
-  autoLampOn = temp < lampOnTemp;
-  autoConveyorOn = gasDetected;
-  applyRelayStates();
+  hasValidSensorReading = true;
+  lastTemperature = temp;
+  lastHumidity = hum;
+  lastGasValue = gasValue;
+  lastGasDetected = gasDetected;
+  recomputeAutoStates();
 
   StaticJsonDocument<192> doc;
   doc["deviceId"] = DEVICE_ID;
@@ -369,12 +443,13 @@ void sendSensorData() {
   serializeJson(doc, jsonBuf);
 
   Serial.printf("  Sensor -> temp: %.1f C, hum: %.1f%%, gas: %d (%s)\n",
-                temp, hum, gasValue, gasDetected ? "DETECTED" : "safe");
-  Serial.printf("  Auto -> Fan1:%s Fan2:%s Lamp:%s Conveyor:%s\n",
+                lastTemperature, lastHumidity, lastGasValue, lastGasDetected ? "DETECTED" : "safe");
+  Serial.printf("  Auto -> Fan1:%s Fan2:%s Lamp:%s Conveyor:%s AI:%s\n",
                 autoFan1On ? "ON" : "OFF",
                 autoFan2On ? "ON" : "OFF",
                 autoLampOn ? "ON" : "OFF",
-                autoConveyorOn ? "ON" : "OFF");
+                autoConveyorOn ? "ON" : "OFF",
+                aiEnabled ? "ON" : "OFF");
   sendPost("/api/iot/readings", jsonBuf);
 
   // /api/iot/readings already records gas and auto-enables conveyor when gasDetected is true.
@@ -461,6 +536,7 @@ void setup() {
   timeClient.update();
 
   syncSettings();
+  syncAiActions();
   sendHeartbeat();
   sendSensorData();
   syncActuators();
@@ -468,6 +544,7 @@ void setup() {
   lastSensorTime = millis();
   lastActuatorPollTime = millis();
   lastSettingsPollTime = millis();
+  lastAiPollTime = millis();
 
   Serial.println("Setup complete. Starting main loop...");
   Serial.println("========================================");
@@ -501,6 +578,11 @@ void loop() {
   if (now - lastSettingsPollTime >= SETTINGS_POLL_INTERVAL) {
     lastSettingsPollTime = now;
     syncSettings();
+  }
+
+  if (now - lastAiPollTime >= AI_ACTION_POLL_INTERVAL) {
+    lastAiPollTime = now;
+    syncAiActions();
   }
 
   if (now - lastActuatorPollTime >= actuatorPollInterval) {
